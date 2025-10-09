@@ -581,10 +581,6 @@
             
             // Create environment
             createEnvironment();
-
-            // [FX] Nebula sprites (cheap space clouds) — provide a transparent PNG
-            addNebula('nebula.png', [ 80, 30, -180], 300);
-            addNebula('nebula.png', [-90, 50, -260], 380);
             
             // Reset game state
             collectedCrystals = 0;
@@ -903,19 +899,6 @@
                 scene.add(debris);
                 particles.push(debris);
             }
-        }
-
-        // [FX] Nebula sprite helper (additive, transparent PNG)
-        function addNebula(textureUrl, pos=[0,20,-120], scale=250) {
-            const tex = _texLoader.load(textureUrl);
-            const mat = new THREE.SpriteMaterial({
-                map: tex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.8
-            });
-            const sprite = new THREE.Sprite(mat);
-            sprite.position.set(...pos);
-            sprite.scale.set(scale, scale, 1);
-            scene.add(sprite);
-            return sprite;
         }
         
         function setupControls() {
