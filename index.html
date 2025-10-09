@@ -242,11 +242,11 @@
                 crystalCount: 8,
                 timeLimit: 90,
                 platforms: [
-                    {pos: [0, 0, 0], size: [20, 2, 20], color: 0x4a5c3a},
-                    {pos: [-30, 5, 0], size: [15, 2, 15], color: 0x5a4c3a},
-                    {pos: [30, 8, -20], size: [12, 2, 12], color: 0x3a5c4a},
-                    {pos: [0, 12, -40], size: [18, 2, 18], color: 0x4a3c5a},
-                    {pos: [-20, 15, -60], size: [10, 2, 10], color: 0x5a3c4a}
+                    {pos: [0, 0, 0], size: [20, 2, 20], color: /*0x4a5c3a*/"#ff0000"},
+                    {pos: [-15, 4, -8], size: [15, 2, 15], color: /*0x5a4c3a*/"#00ff00"},
+                    {pos: [8, 6, -12], size: [12, 2, 12], color: /*0x3a5c4a*/"#0000ff"},
+                    {pos: [-8, 9, -25], size: [18, 2, 18], color: /*0x4a3c5a*/"#ffff00"},
+                    {pos: [12, 13, -35], size: [14, 2, 14], color: /*0x5a3c4a*/"#800080"}
                 ]
             },
             {
@@ -254,12 +254,13 @@
                 crystalCount: 12,
                 timeLimit: 120,
                 platforms: [
-                    {pos: [0, 0, 0], size: [15, 2, 15], color: 0x6a5c4a},
-                    {pos: [25, 10, 0], size: [10, 2, 10], color: 0x5a6c4a},
-                    {pos: [-25, 15, -10], size: [8, 2, 8], color: 0x4a6c5a},
-                    {pos: [0, 20, -30], size: [12, 2, 12], color: 0x6a4c5a},
-                    {pos: [20, 25, -50], size: [8, 2, 8], color: 0x5a4c6a},
-                    {pos: [-30, 30, -70], size: [10, 2, 10], color: 0x4a5c6a}
+                    {pos: [0, 0, 0], size: [15, 2, 15], color: /*0x6a5c4a*/"#ff0000"},
+                    {pos: [12, 4, -8], size: [12, 2, 12], color: /*0x5a6c4a*/"#00ff00"},
+                    {pos: [-8, 8, -14], size: [10, 2, 10], color: /*0x4a6c5a*/"#0000ff"},
+                    {pos: [10, 12, -22], size: [12, 2, 12], color: /*0x6a4c5a*/"#ffff00"},
+                    {pos: [-6, 16, -30], size: [10, 2, 10], color: /*0x5a4c6a*/"#800080"},
+                    {pos: [8, 20, -38], size: [12, 2, 12], color: /*0x4a5c6a*/"#ff0000"},
+                    {pos: [-4, 24, -46], size: [10, 2, 10], color: /*0x6a4c5a*/"#00ff00"}
                 ]
             },
             {
@@ -267,13 +268,14 @@
                 crystalCount: 15,
                 timeLimit: 150,
                 platforms: [
-                    {pos: [0, 0, 0], size: [12, 2, 12], color: 0x7a5c4a},
-                    {pos: [20, 8, -15], size: [8, 2, 8], color: 0x5a7c4a},
-                    {pos: [-20, 12, -25], size: [10, 2, 10], color: 0x4a7c5a},
-                    {pos: [15, 20, -45], size: [6, 2, 6], color: 0x7a4c5a},
-                    {pos: [-25, 25, -60], size: [8, 2, 8], color: 0x5a4c7a},
-                    {pos: [0, 35, -80], size: [12, 2, 12], color: 0x4a5c7a},
-                    {pos: [30, 40, -100], size: [6, 2, 6], color: 0x7a6c4a}
+                    {pos: [0, 0, 0], size: [14, 2, 14], color: /*0x7a5c4a*/"#ff0000"},
+                    {pos: [10, 5, -8], size: [12, 2, 12], color: /*0x5a7c4a*/"#00ff00"},
+                    {pos: [-8, 10, -16], size: [10, 2, 10], color: /*0x4a7c5a*/"#0000ff"},
+                    {pos: [12, 15, -24], size: [11, 2, 11], color: /*0x7a4c5a*/"#ffff00"},
+                    {pos: [-6, 20, -32], size: [9, 2, 9], color: /*0x5a4c7a*/"#800080"},
+                    {pos: [8, 25, -40], size: [12, 2, 12], color: /*0x4a5c7a*/"#ff0000"},
+                    {pos: [-10, 30, -48], size: [8, 2, 8], color: /*0x7a6c4a*/"#00ff00"},
+                    {pos: [6, 35, -56], size: [10, 2, 10], color: /*0x5a7c4a*/"#0000ff"}
                 ]
             }
         ];
@@ -437,19 +439,27 @@
                 
                 const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
                 
-                // Position crystals on or near platforms
-                if (i < platforms.length && platforms[i]) {
-                    const platform = platforms[i];
-                    crystal.position.copy(platform.position);
-                    crystal.position.y += 4;
-                    crystal.position.x += (Math.random() - 0.5) * 8;
-                    crystal.position.z += (Math.random() - 0.5) * 8;
+                // Position crystals on or near platforms - distribute evenly across all platforms
+                const platformIndex = i % platforms.length; // Cycle through platforms
+                const platform = platforms[platformIndex];
+                
+                crystal.position.copy(platform.position);
+                crystal.position.y += 4;
+                
+                // For multiple crystals per platform, spread them out more
+                const crystalsPerPlatform = Math.ceil(count / platforms.length);
+                const crystalOnPlatform = Math.floor(i / platforms.length);
+                
+                // Create different positions for multiple crystals on the same platform
+                if (crystalsPerPlatform > 1) {
+                    const angle = (crystalOnPlatform / crystalsPerPlatform) * Math.PI * 2;
+                    const radius = 3 + (crystalOnPlatform * 2);
+                    crystal.position.x += Math.cos(angle) * radius;
+                    crystal.position.z += Math.sin(angle) * radius;
                 } else {
-                    crystal.position.set(
-                        (Math.random() - 0.5) * 100,
-                        Math.random() * 30 + 10,
-                        (Math.random() - 0.5) * 100
-                    );
+                    // Single crystal per platform - small random offset
+                    crystal.position.x += (Math.random() - 0.5) * 6;
+                    crystal.position.z += (Math.random() - 0.5) * 6;
                 }
                 
                 crystal.userData = { rotationSpeed: Math.random() * 0.02 + 0.01 };
