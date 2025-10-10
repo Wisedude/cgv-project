@@ -235,6 +235,10 @@
         let particles = [];
     let isJumping = false, jumpCooldown = 0;
     let levelCompleteActive = false;
+
+        const PLAYER_HALF_SIZE = new THREE.Vector3(0.75, 1.25, 0.75);
+    const _collisionDiff = new THREE.Vector3();
+    const _combinedHalfExtents = new THREE.Vector3();
         
         // Level configurations
         const levelConfigs = [
@@ -417,6 +421,10 @@
             platform.position.set(position[0], position[1], position[2]);
             platform.receiveShadow = true;
             platform.castShadow = true;
+
+            platform.userData.collider = {
+                halfSize: new THREE.Vector3(size[0] / 2, size[1] / 2, size[2] / 2)
+            };
             
             scene.add(platform);
             platforms.push(platform);
@@ -426,6 +434,47 @@
             const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
             const wireframe = new THREE.LineSegments(edges, lineMaterial);
             platform.add(wireframe);
+        }
+
+        function resolvePlatformCollisions(newPosition) {
+            let grounded = false;
+
+            platforms.forEach(platform => {
+                const collider = platform.userData.collider;
+                if (!collider) return;
+
+                const center = platform.position;
+                _collisionDiff.copy(newPosition).sub(center);
+                _combinedHalfExtents.copy(collider.halfSize).add(PLAYER_HALF_SIZE);
+
+                const overlapX = _combinedHalfExtents.x - Math.abs(_collisionDiff.x);
+                const overlapY = _combinedHalfExtents.y - Math.abs(_collisionDiff.y);
+                const overlapZ = _combinedHalfExtents.z - Math.abs(_collisionDiff.z);
+
+                if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
+                    if (overlapY <= overlapX && overlapY <= overlapZ) {
+                        if (_collisionDiff.y > 0) {
+                            newPosition.y = center.y + collider.halfSize.y + PLAYER_HALF_SIZE.y;
+                            playerVelocity.y = 0;
+                            grounded = true;
+                            isJumping = false;
+                        } else {
+                            newPosition.y = center.y - collider.halfSize.y - PLAYER_HALF_SIZE.y;
+                            if (playerVelocity.y > 0) playerVelocity.y = 0;
+                        }
+                    } else if (overlapX <= overlapZ) {
+                        const dir = _collisionDiff.x >= 0 ? 1 : -1;
+                        newPosition.x = center.x + (collider.halfSize.x + PLAYER_HALF_SIZE.x) * dir;
+                        if (playerVelocity.x * dir < 0) playerVelocity.x = 0;
+                    } else {
+                        const dir = _collisionDiff.z >= 0 ? 1 : -1;
+                        newPosition.z = center.z + (collider.halfSize.z + PLAYER_HALF_SIZE.z) * dir;
+                        if (playerVelocity.z * dir < 0) playerVelocity.z = 0;
+                    }
+                }
+            });
+
+            return grounded;
         }
         
         function createCrystals(count) {
@@ -702,28 +751,12 @@
             
             // Move player
             const newPosition = player.position.clone().add(playerVelocity);
-            
-            // Platform collision detection
-            let onPlatform = false;
-            platforms.forEach(platform => {
-                const platPos = platform.position;
-                const platScale = platform.geometry.parameters;
-                
-                if (newPosition.x > platPos.x - platScale.width/2 && 
-                    newPosition.x < platPos.x + platScale.width/2 &&
-                    newPosition.z > platPos.z - platScale.depth/2 && 
-                    newPosition.z < platPos.z + platScale.depth/2) {
-                    
-                    if (newPosition.y <= platPos.y + platScale.height/2 + 1.5 && 
-                        newPosition.y >= platPos.y + platScale.height/2) {
-                        newPosition.y = platPos.y + platScale.height/2 + 1.5;
-                        playerVelocity.y = 0;
-                        isJumping = false;
-                        onPlatform = true;
-                    }
-                }
-            });
-            
+
+            const grounded = resolvePlatformCollisions(newPosition);
+            if (grounded) {
+                jumpCooldown = 0;
+            }
+
             // Check for falling (game over condition)
             if (newPosition.y < -50) {
                 lives--;
