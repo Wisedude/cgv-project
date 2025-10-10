@@ -586,58 +586,65 @@
             
             // Draw a simple minimap background
             function drawMinimap() {
-                if (!gameStarted) return;
-                
+                if (!gameStarted || !player) return;
+
                 ctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
+
                 // Draw background
                 ctx.fillStyle = 'rgba(0, 0, 50, 0.7)';
                 ctx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
+
                 // Draw border
                 ctx.strokeStyle = 'rgba(100, 200, 255, 0.5)';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
-                // Draw player position
-                if (player) {
-                    ctx.fillStyle = '#00ff88';
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapCanvas.width/2 + player.position.x/10, 
-                        minimapCanvas.height/2 + player.position.z/10, 
-                        3, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                }
-                
-                // Draw crystals
-                crystals.forEach(crystal => {
-                    ctx.fillStyle = crystal.material.color.getStyle();
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapCanvas.width/2 + crystal.position.x/10, 
-                        minimapCanvas.height/2 + crystal.position.z/10, 
-                        2, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                });
-                
-                // Draw platforms
+
+                const scale = 2;
+                const centerX = minimapCanvas.width / 2;
+                const centerY = minimapCanvas.height / 2;
+
+                // Draw platforms relative to player
                 platforms.forEach(platform => {
                     ctx.fillStyle = 'rgba(100, 150, 200, 0.5)';
-                    const width = platform.geometry.parameters.width / 10;
-                    const depth = platform.geometry.parameters.depth / 10;
+                    const width = platform.geometry.parameters.width * scale;
+                    const depth = platform.geometry.parameters.depth * scale;
+                    const offsetX = (platform.position.x - player.position.x) * scale;
+                    const offsetZ = (platform.position.z - player.position.z) * scale;
+
                     ctx.fillRect(
-                        minimapCanvas.width/2 + platform.position.x/10 - width/2,
-                        minimapCanvas.height/2 + platform.position.z/10 - depth/2,
-                        width, depth
+                        centerX + offsetX - width / 2,
+                        centerY + offsetZ - depth / 2,
+                        width,
+                        depth
                     );
                 });
+
+                // Draw crystals relative to player
+                crystals.forEach(crystal => {
+                    ctx.fillStyle = crystal.material.color.getStyle();
+                    const offsetX = (crystal.position.x - player.position.x) * scale;
+                    const offsetZ = (crystal.position.z - player.position.z) * scale;
+
+                    ctx.beginPath();
+                    ctx.arc(
+                        centerX + offsetX,
+                        centerY + offsetZ,
+                        2,
+                        0,
+                        Math.PI * 2
+                    );
+                    ctx.fill();
+                });
+
+                // Draw player position at center
+                ctx.fillStyle = '#00ff88';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+                ctx.fill();
             }
             
             // Update minimap periodically
-            setInterval(drawMinimap, 100);
+            setInterval(drawMinimap, 50);
         }
         
         function updatePlayer() {
