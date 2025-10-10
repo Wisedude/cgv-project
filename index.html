@@ -214,8 +214,8 @@
         <div id="levelComplete">
             <h2>Level Complete! 🎉</h2>
             <p id="levelStats">Great job collecting all crystals!</p>
-            <button class="button" onclick="nextLevel()">Next Level</button>
-            <button class="button" onclick="backToMenu()">Main Menu</button>
+            <button class="button" onclick="nextLevel()">Next Level (Space)</button>
+            <button class="button" onclick="backToMenu()">Main Menu (Esc)</button>
         </div>
     </div>
 
@@ -233,7 +233,8 @@
         let gameTimer, levelStartTime;
         let cameraMode = 0; // 0: third-person, 1: first-person, 2: top-down
         let particles = [];
-        let isJumping = false, jumpCooldown = 0;
+    let isJumping = false, jumpCooldown = 0;
+    let levelCompleteActive = false;
         
         // Level configurations
         const levelConfigs = [
@@ -510,6 +511,17 @@
         function setupControls() {
             // Keyboard events
             window.addEventListener('keydown', (event) => {
+                if (levelCompleteActive) {
+                    if (event.code === 'Space') {
+                        event.preventDefault();
+                        nextLevel();
+                    } else if (event.code === 'Escape') {
+                        event.preventDefault();
+                        backToMenu();
+                    }
+                    return;
+                }
+
                 keys[event.code] = true;
                 
                 switch(event.code) {
@@ -773,7 +785,7 @@
             switch(cameraMode) {
                 case 0: // Third-person
                     const offset = new THREE.Vector3(0, 8, 15);
-                    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), mouseX);
+                    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), -mouseX);
                     camera.position.copy(player.position).add(offset);
                     camera.lookAt(player.position);
                     break;
@@ -878,6 +890,7 @@
         function levelComplete() {
             gameStarted = false;
             if (gameTimer) clearInterval(gameTimer);
+            levelCompleteActive = true;
             
             // Bonus points for remaining time
             score += gameTime * 10;
@@ -895,6 +908,7 @@
         
         function nextLevel() {
             document.getElementById('levelComplete').style.display = 'none';
+            levelCompleteActive = false;
             
             if (currentLevel < maxLevel) {
                 currentLevel++;
@@ -910,6 +924,7 @@
         function restartLevel() {
             document.getElementById('gameOver').style.display = 'none';
             document.getElementById('levelComplete').style.display = 'none';
+            levelCompleteActive = false;
             loadLevel(currentLevel);
             gameStarted = true;
         }
@@ -923,6 +938,10 @@
             document.getElementById('ui').style.display = 'none';
             document.getElementById('controls').style.display = 'none';
             document.getElementById('menu').style.display = 'block';
+            levelCompleteActive = false;
+            if (document.pointerLockElement === renderer.domElement) {
+                document.exitPointerLock();
+            }
             
             // Reset game state
             currentLevel = 1;
