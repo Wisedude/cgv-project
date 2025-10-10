@@ -214,8 +214,8 @@
         <div id="levelComplete">
             <h2>Level Complete! 🎉</h2>
             <p id="levelStats">Great job collecting all crystals!</p>
-            <button class="button" onclick="nextLevel()">Next Level</button>
-            <button class="button" onclick="backToMenu()">Main Menu</button>
+            <button class="button" onclick="nextLevel()">Next Level (Space)</button>
+            <button class="button" onclick="backToMenu()">Main Menu (Esc)</button>
         </div>
     </div>
 
@@ -256,9 +256,9 @@
     <script>
         // Game state variables (kept intact)
         let scene, camera, renderer, gameStarted = false;
-        let player, playerVelocity = new THREE.Vector3();
-        let platforms = [], crystals = [], collectibles = [];
-        let keys = {}, mouseX = 0, mouseY = 0;
+    let player, playerVelocity = new THREE.Vector3();
+    let platforms = [], crystals = [], collectibles = [];
+    let keys = {}, cameraYaw = 0, cameraPitch = 0;
         let currentLevel = 1, maxLevel = 3;
         let collectedCrystals = 0, totalCrystals = 10;
         let lives = 3, score = 0, gameTime = 60;
@@ -280,17 +280,21 @@
 
 
         // Level configurations (kept intact)
+        let isJumping = false, jumpCooldown = 0;
+        let levelCompleteActive = false;
+        
+        // Level configurations
         const levelConfigs = [
             {
                 name: "Crystal Caverns",
                 crystalCount: 8,
                 timeLimit: 90,
                 platforms: [
-                    {pos: [0, 0, 0], size: [20, 2, 20], color: 0x4a5c3a},
-                    {pos: [-30, 5, 0], size: [15, 2, 15], color: 0x5a4c3a},
-                    {pos: [30, 8, -20], size: [12, 2, 12], color: 0x3a5c4a},
-                    {pos: [0, 12, -40], size: [18, 2, 18], color: 0x4a3c5a},
-                    {pos: [-20, 15, -60], size: [10, 2, 10], color: 0x5a3c4a}
+                    {pos: [0, 0, 0], size: [20, 2, 20], color: /*0x4a5c3a*/"#ff0000"},
+                    {pos: [-15, 4, -8], size: [15, 2, 15], color: /*0x5a4c3a*/"#00ff00"},
+                    {pos: [8, 6, -12], size: [12, 2, 12], color: /*0x3a5c4a*/"#0000ff"},
+                    {pos: [-8, 9, -25], size: [18, 2, 18], color: /*0x4a3c5a*/"#ffff00"},
+                    {pos: [12, 13, -35], size: [14, 2, 14], color: /*0x5a3c4a*/"#800080"}
                 ]
             },
             {
@@ -298,12 +302,13 @@
                 crystalCount: 12,
                 timeLimit: 120,
                 platforms: [
-                    {pos: [0, 0, 0], size: [15, 2, 15], color: 0x6a5c4a},
-                    {pos: [25, 10, 0], size: [10, 2, 10], color: 0x5a6c4a},
-                    {pos: [-25, 15, -10], size: [8, 2, 8], color: 0x4a6c5a},
-                    {pos: [0, 20, -30], size: [12, 2, 12], color: 0x6a4c5a},
-                    {pos: [20, 25, -50], size: [8, 2, 8], color: 0x5a4c6a},
-                    {pos: [-30, 30, -70], size: [10, 2, 10], color: 0x4a5c6a}
+                    {pos: [0, 0, 0], size: [15, 2, 15], color: /*0x6a5c4a*/"#ff0000"},
+                    {pos: [12, 4, -8], size: [12, 2, 12], color: /*0x5a6c4a*/"#00ff00"},
+                    {pos: [-8, 8, -14], size: [10, 2, 10], color: /*0x4a6c5a*/"#0000ff"},
+                    {pos: [10, 12, -22], size: [12, 2, 12], color: /*0x6a4c5a*/"#ffff00"},
+                    {pos: [-6, 16, -30], size: [10, 2, 10], color: /*0x5a4c6a*/"#800080"},
+                    {pos: [8, 20, -38], size: [12, 2, 12], color: /*0x4a5c6a*/"#ff0000"},
+                    {pos: [-4, 24, -46], size: [10, 2, 10], color: /*0x6a4c5a*/"#00ff00"}
                 ]
             },
             {
@@ -311,13 +316,14 @@
                 crystalCount: 15,
                 timeLimit: 150,
                 platforms: [
-                    {pos: [0, 0, 0], size: [12, 2, 12], color: 0x7a5c4a},
-                    {pos: [20, 8, -15], size: [8, 2, 8], color: 0x5a7c4a},
-                    {pos: [-20, 12, -25], size: [10, 2, 10], color: 0x4a7c5a},
-                    {pos: [15, 20, -45], size: [6, 2, 6], color: 0x7a4c5a},
-                    {pos: [-25, 25, -60], size: [8, 2, 8], color: 0x5a4c7a},
-                    {pos: [0, 35, -80], size: [12, 2, 12], color: 0x4a5c7a},
-                    {pos: [30, 40, -100], size: [6, 2, 6], color: 0x7a6c4a}
+                    {pos: [0, 0, 0], size: [14, 2, 14], color: /*0x7a5c4a*/"#ff0000"},
+                    {pos: [10, 5, -8], size: [12, 2, 12], color: /*0x5a7c4a*/"#00ff00"},
+                    {pos: [-8, 10, -16], size: [10, 2, 10], color: /*0x4a7c5a*/"#0000ff"},
+                    {pos: [12, 15, -24], size: [11, 2, 11], color: /*0x7a4c5a*/"#ffff00"},
+                    {pos: [-6, 20, -32], size: [9, 2, 9], color: /*0x5a4c7a*/"#800080"},
+                    {pos: [8, 25, -40], size: [12, 2, 12], color: /*0x4a5c7a*/"#ff0000"},
+                    {pos: [-10, 30, -48], size: [8, 2, 8], color: /*0x7a6c4a*/"#00ff00"},
+                    {pos: [6, 35, -56], size: [10, 2, 10], color: /*0x5a7c4a*/"#0000ff"}
                 ]
             }
         ];
@@ -844,12 +850,27 @@
                     crystal.position.y += 4;
                     crystal.position.x += (Math.random() - 0.5) * 8;
                     crystal.position.z += (Math.random() - 0.5) * 8;
+                // Position crystals on or near platforms - distribute evenly across all platforms
+                const platformIndex = i % platforms.length; // Cycle through platforms
+                const platform = platforms[platformIndex];
+                
+                crystal.position.copy(platform.position);
+                crystal.position.y += 4;
+                
+                // For multiple crystals per platform, spread them out more
+                const crystalsPerPlatform = Math.ceil(count / platforms.length);
+                const crystalOnPlatform = Math.floor(i / platforms.length);
+                
+                // Create different positions for multiple crystals on the same platform
+                if (crystalsPerPlatform > 1) {
+                    const angle = (crystalOnPlatform / crystalsPerPlatform) * Math.PI * 2;
+                    const radius = 3 + (crystalOnPlatform * 2);
+                    crystal.position.x += Math.cos(angle) * radius;
+                    crystal.position.z += Math.sin(angle) * radius;
                 } else {
-                    crystal.position.set(
-                        (Math.random() - 0.5) * 100,
-                        Math.random() * 30 + 10,
-                        (Math.random() - 0.5) * 100
-                    );
+                    // Single crystal per platform - small random offset
+                    crystal.position.x += (Math.random() - 0.5) * 6;
+                    crystal.position.z += (Math.random() - 0.5) * 6;
                 }
                 
                 crystal.userData = { rotationSpeed: Math.random() * 0.02 + 0.01 };
@@ -904,6 +925,17 @@
         function setupControls() {
             // Keyboard events (kept intact)
             window.addEventListener('keydown', (event) => {
+                if (levelCompleteActive) {
+                    if (event.code === 'Space') {
+                        event.preventDefault();
+                        nextLevel();
+                    } else if (event.code === 'Escape') {
+                        event.preventDefault();
+                        backToMenu();
+                    }
+                    return;
+                }
+
                 keys[event.code] = true;
                 
                 switch(event.code) {
@@ -938,9 +970,15 @@
             
             document.addEventListener('mousemove', (event) => {
                 if (isPointerLocked && gameStarted) {
-                    mouseX += event.movementX * 0.002;
-                    mouseY += event.movementY * 0.002;
-                    mouseY = Math.max(-Math.PI/2, Math.min(Math.PI/2, mouseY));
+                    const sensitivity = 0.002;
+                    cameraYaw += event.movementX * sensitivity;
+                    cameraPitch -= event.movementY * sensitivity;
+
+                    if (cameraYaw > Math.PI) cameraYaw -= Math.PI * 2;
+                    if (cameraYaw < -Math.PI) cameraYaw += Math.PI * 2;
+
+                    const maxPitch = Math.PI / 2 - 0.1;
+                    cameraPitch = Math.max(-maxPitch, Math.min(maxPitch, cameraPitch));
                 }
             });
             
@@ -962,58 +1000,65 @@
             
             // Draw a simple minimap background
             function drawMinimap() {
-                if (!gameStarted) return;
-                
+                if (!gameStarted || !player) return;
+
                 ctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
+
                 // Draw background
                 ctx.fillStyle = 'rgba(0, 0, 50, 0.7)';
                 ctx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
+
                 // Draw border
                 ctx.strokeStyle = 'rgba(100, 200, 255, 0.5)';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-                
-                // Draw player position
-                if (player) {
-                    ctx.fillStyle = '#00ff88';
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapCanvas.width/2 + player.position.x/10, 
-                        minimapCanvas.height/2 + player.position.z/10, 
-                        3, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                }
-                
-                // Draw crystals
-                crystals.forEach(crystal => {
-                    ctx.fillStyle = crystal.material.color.getStyle();
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapCanvas.width/2 + crystal.position.x/10, 
-                        minimapCanvas.height/2 + crystal.position.z/10, 
-                        2, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                });
-                
-                // Draw platforms
+
+                const scale = 2;
+                const centerX = minimapCanvas.width / 2;
+                const centerY = minimapCanvas.height / 2;
+
+                // Draw platforms relative to player
                 platforms.forEach(platform => {
                     ctx.fillStyle = 'rgba(100, 150, 200, 0.5)';
-                    const width = platform.geometry.parameters.width / 10;
-                    const depth = platform.geometry.parameters.depth / 10;
+                    const width = platform.geometry.parameters.width * scale;
+                    const depth = platform.geometry.parameters.depth * scale;
+                    const offsetX = (platform.position.x - player.position.x) * scale;
+                    const offsetZ = (platform.position.z - player.position.z) * scale;
+
                     ctx.fillRect(
-                        minimapCanvas.width/2 + platform.position.x/10 - width/2,
-                        minimapCanvas.height/2 + platform.position.z/10 - depth/2,
-                        width, depth
+                        centerX + offsetX - width / 2,
+                        centerY + offsetZ - depth / 2,
+                        width,
+                        depth
                     );
                 });
+
+                // Draw crystals relative to player
+                crystals.forEach(crystal => {
+                    ctx.fillStyle = crystal.material.color.getStyle();
+                    const offsetX = (crystal.position.x - player.position.x) * scale;
+                    const offsetZ = (crystal.position.z - player.position.z) * scale;
+
+                    ctx.beginPath();
+                    ctx.arc(
+                        centerX + offsetX,
+                        centerY + offsetZ,
+                        2,
+                        0,
+                        Math.PI * 2
+                    );
+                    ctx.fill();
+                });
+
+                // Draw player position at center
+                ctx.fillStyle = '#00ff88';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+                ctx.fill();
             }
             
             // Update minimap periodically
-            setInterval(drawMinimap, 100);
+            setInterval(drawMinimap, 50);
         }
         
         function updatePlayer() {
@@ -1164,21 +1209,32 @@
         
         function updateCameraPosition() {
             if (!player) return;
+
+            const lookDirection = new THREE.Vector3(
+                Math.sin(cameraYaw) * Math.cos(cameraPitch),
+                Math.sin(cameraPitch),
+                -Math.cos(cameraYaw) * Math.cos(cameraPitch)
+            ).normalize();
+            const headOffset = new THREE.Vector3(0, 1, 0);
             
             switch(cameraMode) {
-                case 0: // Third-person (with a tiny smooth follow)
-                    const offset = new THREE.Vector3(0, 8, 15);
-                    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), mouseX);
-                    const desired = new THREE.Vector3().copy(player.position).add(offset);
-                    camera.position.lerp(desired, 0.12); // [FX] subtle smoothing
-                    camera.lookAt(player.position);
+                case 0: // Third-person
+                    const followDistance = 15;
+                    const verticalOffset = 8;
+                    const thirdPersonOffset = lookDirection.clone().multiplyScalar(-followDistance);
+                    thirdPersonOffset.y += verticalOffset;
+                    if (thirdPersonOffset.y < 1) thirdPersonOffset.y = 1;
+
+                    camera.position.copy(player.position).add(thirdPersonOffset);
+
+                    const lookTarget = player.position.clone().add(headOffset).add(lookDirection.clone().multiplyScalar(2));
+                    camera.lookAt(lookTarget);
                     break;
                     
                 case 1: // First-person
-                    camera.position.copy(player.position);
-                    camera.position.y += 1;
-                    camera.rotation.y = mouseX;
-                    camera.rotation.x = mouseY;
+                    const firstPersonPosition = player.position.clone().add(headOffset);
+                    camera.position.copy(firstPersonPosition);
+                    camera.lookAt(firstPersonPosition.clone().add(lookDirection));
                     break;
                     
                 case 2: // Top-down
@@ -1303,6 +1359,7 @@
         function levelComplete() {
             gameStarted = false;
             if (gameTimer) clearInterval(gameTimer);
+            levelCompleteActive = true;
             
             // Bonus points for remaining time
             score += gameTime * 10;
@@ -1320,6 +1377,7 @@
         
         function nextLevel() {
             document.getElementById('levelComplete').style.display = 'none';
+            levelCompleteActive = false;
             
             if (currentLevel < maxLevel) {
                 currentLevel++;
@@ -1335,6 +1393,7 @@
         function restartLevel() {
             document.getElementById('gameOver').style.display = 'none';
             document.getElementById('levelComplete').style.display = 'none';
+            levelCompleteActive = false;
             loadLevel(currentLevel);
             gameStarted = true;
         }
@@ -1348,12 +1407,18 @@
             document.getElementById('ui').style.display = 'none';
             document.getElementById('controls').style.display = 'none';
             document.getElementById('menu').style.display = 'block';
+            levelCompleteActive = false;
+            if (document.pointerLockElement === renderer.domElement) {
+                document.exitPointerLock();
+            }
             
             // Reset game state
             currentLevel = 1;
             lives = 3;
             score = 0;
             collectedCrystals = 0;
+            cameraYaw = 0;
+            cameraPitch = 0;
             
             clearLevel();
         }
@@ -1394,6 +1459,8 @@
             document.getElementById('ui').style.display = 'block';
             document.getElementById('controls').style.display = 'block';
             
+            cameraYaw = 0;
+            cameraPitch = 0;
             loadLevel(currentLevel);
             gameStarted = true;
             console.log('Crystal Collector 3D - Game Started!');
