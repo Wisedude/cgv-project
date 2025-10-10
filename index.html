@@ -219,42 +219,10 @@
         </div>
     </div>
 
-    <!-- Three.js core-->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-    <!-- Postprocessing core -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-
-    <!-- Shaders used by passes -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/UnpackDepthRGBAShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/DepthLimitedBlurShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/SSAOShader.js"></script>
-
-    <!-- ⬇️ The missing piece for SSAO -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/math/SimplexNoise.js"></script>
-
-    <!-- Afterimage dependencies -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/AfterimageShader.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
-
-
-    <!-- Passes -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/SSAOPass.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/OutlinePass.js"></script>
-    <!-- Controls -->
-    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-
+    
     <script>
-        // Game state variables (kept intact)
+        // Game state variables
         let scene, camera, renderer, gameStarted = false;
     let player, playerVelocity = new THREE.Vector3();
     let platforms = [], crystals = [], collectibles = [];
@@ -265,23 +233,8 @@
         let gameTimer, levelStartTime;
         let cameraMode = 0; // 0: third-person, 1: first-person, 2: top-down
         let particles = [];
-        let isJumping = false, jumpCooldown = 0;
-
-        // [FX] Postprocessing globals (composer + passes)
-        let composer, bloomPass, ssaoPass, bokehPass, outlinePass, afterimagePass;
-
-        // [FX] Asset loaders & caches so we don't reload per object
-        const _texLoader = new THREE.TextureLoader();
-        let _platformTextures = null; // will lazy-load on first platform
-        let _skyCube = null;
-
-
-        let bgDebris = null; // far background debris (persists across levels)
-
-
-        // Level configurations (kept intact)
-        let isJumping = false, jumpCooldown = 0;
-        let levelCompleteActive = false;
+    let isJumping = false, jumpCooldown = 0;
+    let levelCompleteActive = false;
         
         // Level configurations
         const levelConfigs = [
@@ -334,10 +287,7 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a2a);
             scene.fog = new THREE.Fog(0x200040, 50, 500);
-
-            // [FX] Prefer exponential fog for "space haze"
-            scene.fog = new THREE.FogExp2(0x080820, 0.0025);
-
+            
             // Camera setup
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             updateCameraPosition();
@@ -352,218 +302,48 @@
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.setClearColor(0x0a0a2a, 1.0);
-
-            // Tone mapping
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 0.85; // ↓ from 1.0 (global brightness)
             
             // Setup lighting, environment, and controls
             setupLighting();
             setupControls();
             setupMinimap();
-
-            // [FX] Skybox + starfield (load once)
-            setupSpaceSky();
-
-            // [FX] Far-background debris (load once)
-            addBackgroundDebris(); 
-
-            // [FX] Atmospheric haze plane (thin glow under scene)
-            addHazeLayer();
-
-            // [FX] Postprocessing composer & passes
-            setupComposer();
-
+            
             // Start render loop
             animate();
             console.log('Crystal Collector 3D initialized');
         }
         
         function setupLighting() {
-        // Ambient (overall fill)
-        const ambientLight = new THREE.AmbientLight(0x404080, 0.25); // ↓ from 0.4
-        scene.add(ambientLight);
-
-        // Directional (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9); // ↓ from 1.2
-        directionalLight.position.set(50, 100, 50);
-        directionalLight.castShadow = true;
-        // ... keep your existing shadow settings ...
-        scene.add(directionalLight);
-
-        // Accent point lights (atmosphere)
-        const pointLight1 = new THREE.PointLight(0x00ffff, 0.55, 100); // ↓ from 0.8
-        pointLight1.position.set(-50, 30, -30);
-        scene.add(pointLight1);
-
-        const pointLight2 = new THREE.PointLight(0xff00ff, 0.45, 80);  // ↓ from 0.6
-        pointLight2.position.set(50, 25, -50);
-        scene.add(pointLight2);
-
-        const pointLight3 = new THREE.PointLight(0xffff00, 0.3, 60);   // ↓ from 0.4
-        pointLight3.position.set(0, 50, -80);
-        scene.add(pointLight3);
-
-        // Rim light
-        const rimLight = new THREE.DirectionalLight(0x88bbff, 0.45);   // ↓ from 0.6
-        rimLight.position.set(-80, 40, 60);
-        scene.add(rimLight);
-      }
-
-
-        // [FX] Skybox, environment, and starfield
-        function setupSpaceSky() {
-            const cubeLoader = new THREE.CubeTextureLoader();
-            // TODO: replace with your 6 cube faces (space textures)
-            _skyCube = cubeLoader.load(['px.png','nx.png','py.png','ny.png','pz.png','nz.png']);
-            scene.background = _skyCube;
-            scene.environment = _skyCube; // reflections for PBR/glass
-
-            // Starfield (thousands of cheap points)
-            function createStarfield(count = 4000, radius = 1200) {
-                const g = new THREE.BufferGeometry();
-                const pos = new Float32Array(count * 3);
-                for (let i = 0; i < count; i++) {
-                    const r = radius * (0.75 + Math.random() * 0.25);
-                    const theta = Math.random() * Math.PI * 2;
-                    const u = Math.random() * 2 - 1; // cos(phi)
-                    const s = Math.sqrt(1 - u*u);
-                    pos[3*i+0] = r * s * Math.cos(theta);
-                    pos[3*i+1] = r * s * Math.sin(theta);
-                    pos[3*i+2] = r * u;
-                }
-                g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-                const m = new THREE.PointsMaterial({ size: 1.2, sizeAttenuation: true, transparent: true, opacity: 0.85 });
-                m.depthWrite = false;
-                const stars = new THREE.Points(g, m);
-                scene.add(stars);
-            }
-            createStarfield();
-        }
-
-        // Far-background debris: faint, slow, large radius. No shadows, very cheap.
-        function addBackgroundDebris(count = 180, rMin = 650, rMax = 900) {
-          if (bgDebris) return; // only build once
-          bgDebris = new THREE.Group();
-          scene.add(bgDebris);
-
-          const geo = new THREE.IcosahedronGeometry(1, 0); // tiny rock-ish shape
-          const mat = new THREE.MeshBasicMaterial({
-            color: 0x99aacc,
-            transparent: true,
-            opacity: 0.20,           // faint
-            depthWrite: false        // don't occlude stars or scene
-          });
-
-          for (let i = 0; i < count; i++) {
-            const m = new THREE.Mesh(geo, mat);
-            const r = rMin + Math.random() * (rMax - rMin);
-            const theta = Math.random() * Math.PI * 2;
-            const u = Math.random() * 2 - 1;       // cos(phi)
-            const s = Math.sqrt(1 - u*u);
-            m.position.set(r * s * Math.cos(theta), r * s * Math.sin(theta), r * u);
-
-            const scale = 1 + Math.random() * 4;   // small variation
-            m.scale.setScalar(scale);
-
-            m.castShadow = false;
-            m.receiveShadow = false;
-
-            bgDebris.add(m);
-          }
-        }
-
-
-        // [FX] Haze plane for subtle glow & depth cue
-        function addHazeLayer() {
-            const hazeMat = new THREE.MeshBasicMaterial({
-                color: 0x224477, transparent: true, opacity: 0.08,
-                blending: THREE.AdditiveBlending, depthWrite: false
-            });
-            const haze = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), hazeMat);
-            haze.rotation.x = -Math.PI / 2;
-            haze.position.y = -12;
-            scene.add(haze);
-        }
-
-        // [FX] Post-processing composer and passes
-        function setupComposer() {
-            composer = new THREE.EffectComposer(renderer);
-            const renderPass = new THREE.RenderPass(scene, camera);
-            composer.addPass(renderPass);
-
-            // Bloom (glow around bright areas)
-            bloomPass = new THREE.UnrealBloomPass(
-                new THREE.Vector2(window.innerWidth, window.innerHeight),
-                0.8, 0.6, 0.85
-            );
-            composer.addPass(bloomPass);
-
-            // ... later in setupComposer() after you create bloomPass:
-            bloomPass.strength = 0.45; // ↓ from 0.8 (glow intensity)
-            bloomPass.radius   = 0.35; // optional: tighter glow
-            bloomPass.threshold= 0.9;  // optional: glow only very bright stuff
-
-            // SSAO (ambient occlusion for contact shadows)
-            ssaoPass = new THREE.SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
-            ssaoPass.kernelRadius = 12;
-            ssaoPass.minDistance = 0.005;
-            ssaoPass.maxDistance = 0.1;
-            composer.addPass(ssaoPass);
-
-            // DOF (optional; enable when desired)
-            bokehPass = new THREE.BokehPass(scene, camera, {
-                focus: 40.0,
-                aperture: 0.0003,
-                maxblur: 0.01
-            });
-            // composer.addPass(bokehPass);
-
-            // Outline (add later when selecting objects)
-            outlinePass = new THREE.OutlinePass(
-                new THREE.Vector2(window.innerWidth, window.innerHeight),
-                scene, camera
-            );
-            outlinePass.edgeStrength = 3.0;
-            outlinePass.edgeGlow = 0.5;
-            outlinePass.edgeThickness = 1.0;
-            outlinePass.visibleEdgeColor.set('#00ffaa');
-            outlinePass.hiddenEdgeColor.set('#003322');
-            // composer.addPass(outlinePass);
-
-            // Motion trails (optional)
-            afterimagePass = new THREE.AfterimagePass(0.92);
-            // composer.addPass(afterimagePass);
-
-            // Resize handling for composer & passes
-            window.addEventListener('resize', () => {
-                const w = window.innerWidth, h = window.innerHeight;
-                camera.aspect = w / h;
-                camera.updateProjectionMatrix();
-                renderer.setSize(w, h);
-                composer.setSize(w, h);
-                ssaoPass.setSize(w, h);
-            });
-
-            // [FX] Hotkeys to toggle passes quickly
-            window.addEventListener('keydown', (e) => {
-                if (!composer) return;
-                if (e.code === 'Digit1') bloomPass.enabled = !bloomPass.enabled;
-                if (e.code === 'Digit2') ssaoPass.enabled = !ssaoPass.enabled;
-                if (e.code === 'Digit3') {
-                    if (!composer.passes.includes(bokehPass)) composer.addPass(bokehPass);
-                    bokehPass.enabled = !bokehPass.enabled;
-                }
-                if (e.code === 'Digit4') {
-                    if (!composer.passes.includes(afterimagePass)) composer.addPass(afterimagePass);
-                    afterimagePass.enabled = !afterimagePass.enabled;
-                }
-                if (e.code === 'Digit5') {
-                    if (!composer.passes.includes(outlinePass)) composer.addPass(outlinePass);
-                    outlinePass.enabled = !outlinePass.enabled;
-                }
-            });
+            // Ambient light for overall illumination
+            const ambientLight = new THREE.AmbientLight(0x404080, 0.4);
+            scene.add(ambientLight);
+            
+            // Directional light (main light source)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(50, 100, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 500;
+            directionalLight.shadow.camera.left = -100;
+            directionalLight.shadow.camera.right = 100;
+            directionalLight.shadow.camera.top = 100;
+            directionalLight.shadow.camera.bottom = -100;
+            scene.add(directionalLight);
+            
+            // Multiple colored point lights for atmosphere
+            const pointLight1 = new THREE.PointLight(0x00ffff, 0.8, 100);
+            pointLight1.position.set(-50, 30, -30);
+            scene.add(pointLight1);
+            
+            const pointLight2 = new THREE.PointLight(0xff00ff, 0.6, 80);
+            pointLight2.position.set(50, 25, -50);
+            scene.add(pointLight2);
+            
+            const pointLight3 = new THREE.PointLight(0xffff00, 0.4, 60);
+            pointLight3.position.set(0, 50, -80);
+            scene.add(pointLight3);
         }
         
         function loadLevel(levelNum) {
@@ -627,229 +407,39 @@
         }
         
         function createPlatform(position, size, color) {
-          // 1) INVISIBLE COLLIDER BOX (kept for collisions & minimap)
-          const colliderGeo = new THREE.BoxGeometry(size[0], size[1], size[2], 1, 1, 1);
-          colliderGeo.setAttribute('uv2',
-            new THREE.BufferAttribute(colliderGeo.attributes.uv.array, 2)
-          );
-
-          if (!_platformTextures) {
-            const albedo = _texLoader.load('textures/slate2-tiled-albedo2.png', t => t.encoding = THREE.sRGBEncoding);
-            const normal = _texLoader.load('textures/slate2-tiled-normal3-UE4.png');
-            const height = _texLoader.load('textures/slate2-tiled-height.png');
-            const ao     = _texLoader.load('textures/slate2-tiled-ao.png');
-            [albedo, normal, height, ao].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2,2); });
-            _platformTextures = { albedo, normal, height, ao };
-          }
-
-          const invisibleMat = new THREE.MeshBasicMaterial({ visible: false });
-          const collider = new THREE.Mesh(colliderGeo, invisibleMat);
-          collider.position.set(position[0], position[1], position[2]);
-          collider.receiveShadow = true;
-          collider.castShadow = false;        // it’s invisible anyway
-          scene.add(collider);
-          platforms.push(collider);           // <-- keep using this for collisions/minimap
-
-          // 2) VISIBLE METEOR (flat-top)
-          const meteor = makeFlatTopMeteor(size);
-          meteor.position.copy(collider.position);
-          // align top surface close to collider top so the avatar stands neatly
-          meteor.position.y = collider.position.y + size[1] * 0.5 - 0.1;
-
-          // give it a slight random tilt (not too much, so top stays usable)
-          meteor.rotation.set(
-            (Math.random() - 0.5) * 0.15,
-            Math.random() * Math.PI * 2,
-            (Math.random() - 0.5) * 0.15
-          );
-
-          scene.add(meteor);
-
-          // optional subtle rim lines
-          const edges = new THREE.EdgesGeometry(meteor.geometry);
-          meteor.add(new THREE.LineSegments(
-            edges,
-            new THREE.LineBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.18 })
-          ));
-
-        }
-
-        
-        // [FX] Fresnel shader factory for rim glow shells
-        function makeFresnelMaterial() {
-            const v = `
-                varying vec3 vN; varying vec3 vI;
-                void main() {
-                    vec4 wPos = modelMatrix * vec4(position,1.0);
-                    vI = normalize(wPos.xyz - cameraPosition);
-                    vN = normalize(normalMatrix * normal);
-                    gl_Position = projectionMatrix * viewMatrix * wPos;
-                }`;
-            const f = `
-                varying vec3 vN; varying vec3 vI;
-                void main() {
-                    float f = pow(1.0 - dot(normalize(vN), normalize(-vI)), 2.0);
-                    gl_FragColor = vec4(0.0, 1.0, 0.7, 1.0) * f;
-                }`;
-            return new THREE.ShaderMaterial({
-                vertexShader: v, fragmentShader: f,
-                blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+            const platformGeometry = new THREE.BoxGeometry(size[0], size[1], size[2]);
+            const platformMaterial = new THREE.MeshPhongMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.9
             });
+            const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+            platform.position.set(position[0], position[1], position[2]);
+            platform.receiveShadow = true;
+            platform.castShadow = true;
+            
+            scene.add(platform);
+            platforms.push(platform);
+            
+            // Add platform edge glow
+            const edges = new THREE.EdgesGeometry(platformGeometry);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+            const wireframe = new THREE.LineSegments(edges, lineMaterial);
+            platform.add(wireframe);
         }
-
-        // Meteor with an irregular flat top so it's clearly a platform
-        function makeFlatTopMeteor(size = [12, 2, 12]) {
-          const footprint = Math.min(size[0], size[2]) * 0.8; // smaller than collider
-          const radius = footprint * 0.55;
-          const thickness = Math.max(1.2 * size[1], 2.0);     // keep it thin-ish
-
-          // start from a low cylinder and rough it up
-          const radialSegs = 18, heightSegs = 3;
-          const geo = new THREE.CylinderGeometry(radius, radius * 0.92, thickness, radialSegs, heightSegs, false);
-          const pos = geo.attributes.position;
-          const v = new THREE.Vector3();
-          const n = new THREE.SimplexNoise();
-
-          const freqEdge = 0.15, ampEdge = radius * 0.18;   // jaggy rim
-          const freqFace = 0.10, ampFace = 0.25;            // bumpy faces
-
-          const topY    = thickness / 2;
-          const flatCap = topY - 0.25;                      // keep a ~flat top
-
-          for (let i = 0; i < pos.count; i++) {
-            v.fromBufferAttribute(pos, i);
-
-            // edge noise: push rim points out/in a bit
-            const edgeNoise = n.noise3d(v.x * freqEdge, v.y * 0.2, v.z * freqEdge) * ampEdge;
-            const r = Math.sqrt(v.x * v.x + v.z * v.z);
-            if (r > radius * 0.75) {
-              const k = edgeNoise / Math.max(r, 0.0001);
-              v.x += v.x * k;
-              v.z += v.z * k;
-            }
-
-            // face bumps (top & bottom)
-            v.y += n.noise3d(v.x * freqFace, v.y * freqFace, v.z * freqFace) * ampFace;
-
-            // flatten the very top (small randomness so it’s not perfectly flat)
-            if (v.y > flatCap) {
-              const wobble = n.noise3d(v.x * 0.5, 7.3, v.z * 0.5) * 0.08;
-              v.y = flatCap + wobble;
-            }
-
-            // slightly curve the underside so it feels “rocky”
-            if (v.y < -flatCap) {
-              v.y += (v.y + flatCap) * 0.25;
-            }
-
-            pos.setXYZ(i, v.x, v.y, v.z);
-          }
-          pos.needsUpdate = true;
-          geo.computeVertexNormals();
-
-          // copy uv -> uv2 for AO if present
-          if (geo.attributes.uv) {
-            geo.setAttribute('uv2', new THREE.BufferAttribute(geo.attributes.uv.array, 2));
-          }
-
-          const mat = new THREE.MeshStandardMaterial({
-            map: _platformTextures?.albedo ?? null,
-            normalMap: _platformTextures?.normal ?? null,
-            aoMap: _platformTextures?.ao ?? null,
-            displacementMap: _platformTextures?.height ?? null, // tiny effect on a dense mesh
-            displacementScale: 0.01,
-            roughness: 0.85,
-            metalness: 0.05
-          });
-
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          mesh.userData.meteorSpin = 0.001 + Math.random() * 0.001; // subtle idle spin
-          return mesh;
-        }
-
-
-        // Build a blobby meteor using an Icosahedron + simplex noise
-        function makeMeteorMesh(size = [12,2,12]) {
-          const radius = Math.max(size[0], size[2]) * 0.6; // roughly fill the platform footprint
-          const geo = new THREE.IcosahedronGeometry(radius, 3); // detail=3 = nice and rocky
-          const pos = geo.attributes.position;
-          const v = new THREE.Vector3();
-
-          // Simplex noise for organic bumps (you already load SimplexNoise for SSAO)
-          const noise = new THREE.SimplexNoise();
-          const freq = 0.08;     // bigger = finer bumps
-          const amp  = radius*0.18; // bump amplitude
-
-          for (let i = 0; i < pos.count; i++) {
-            v.fromBufferAttribute(pos, i);
-            const n = noise.noise3d(v.x*freq, v.y*freq, v.z*freq);
-            v.addScaledVector(v.clone().normalize(), n * amp);
-            pos.setXYZ(i, v.x, v.y, v.z);
-          }
-          pos.needsUpdate = true;
-          geo.computeVertexNormals();
-
-          // Reuse your texture cache
-          const mat = new THREE.MeshStandardMaterial({
-            map: _platformTextures?.albedo ?? null,
-            normalMap: _platformTextures?.normal ?? null,
-            displacementMap: _platformTextures?.height ?? null, // optional (small effect)
-            displacementScale: 0.02,
-            aoMap: _platformTextures?.ao ?? null,
-            aoMapIntensity: 1.0,
-            roughness: 0.8,
-            metalness: 0.05
-          });
-
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-
-          // lazy-tilt it so it doesn't look aligned
-          mesh.rotation.set(
-            Math.random()*0.6 - 0.3,
-            Math.random()*Math.PI*2,
-            Math.random()*0.6 - 0.3
-          );
-
-          // for subtle idle wobble in update loop
-          mesh.userData.meteorSpin = (0.0015 + Math.random()*0.0015);
-
-          // AO needs uv2; copy uv to uv2 if present
-          if (geo.attributes.uv) {
-            geo.setAttribute('uv2', new THREE.BufferAttribute(geo.attributes.uv.array, 2));
-          }
-
-          return mesh;
-        }
-
-
+        
         function createCrystals(count) {
             for (let i = 0; i < count; i++) {
                 const crystalGeometry = new THREE.OctahedronGeometry(1.2, 0);
-
-                // [FX] Glassy reflective material (MeshPhysicalMaterial)
-                const crystalMaterial = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color().setHSL(Math.random(), 0.6, 0.6),
-                metalness: 0.0,
-                roughness: 0.12,
-                transmission: 1.0,
-                envMapIntensity: 0.7,
-                ior: 1.45
-              });
-
+                const crystalMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(Math.random(), 0.8, 0.6),
+                    transparent: true,
+                    opacity: 0.8,
+                    shininess: 100
+                });
                 
                 const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
                 
-                // Position crystals on or near platforms (kept intact)
-                if (i < platforms.length && platforms[i]) {
-                    const platform = platforms[i];
-                    crystal.position.copy(platform.position);
-                    crystal.position.y += 4;
-                    crystal.position.x += (Math.random() - 0.5) * 8;
-                    crystal.position.z += (Math.random() - 0.5) * 8;
                 // Position crystals on or near platforms - distribute evenly across all platforms
                 const platformIndex = i % platforms.length; // Cycle through platforms
                 const platform = platforms[platformIndex];
@@ -879,7 +469,7 @@
                 scene.add(crystal);
                 crystals.push(crystal);
                 
-                // Add crystal glow effect (kept intact)
+                // Add crystal glow effect
                 const glowGeometry = new THREE.OctahedronGeometry(1.8, 0);
                 const glowMaterial = new THREE.MeshBasicMaterial({
                     color: crystal.material.color,
@@ -888,15 +478,11 @@
                 });
                 const glow = new THREE.Mesh(glowGeometry, glowMaterial);
                 crystal.add(glow);
-
-                // [FX] Add Fresnel rim-glow shell for neon edge
-                const fresnelShell = new THREE.Mesh(new THREE.OctahedronGeometry(1.6, 0), makeFresnelMaterial());
-                crystal.add(fresnelShell);
             }
         }
         
         function createEnvironment() {
-            // Add floating debris/atmosphere (kept intact)
+            // Add floating debris/atmosphere
             for (let i = 0; i < 50; i++) {
                 const debrisGeometry = new THREE.SphereGeometry(0.2, 6, 6);
                 const debrisMaterial = new THREE.MeshBasicMaterial({
@@ -921,9 +507,9 @@
                 particles.push(debris);
             }
         }
-
+        
         function setupControls() {
-            // Keyboard events (kept intact)
+            // Keyboard events
             window.addEventListener('keydown', (event) => {
                 if (levelCompleteActive) {
                     if (event.code === 'Space') {
@@ -955,7 +541,7 @@
                 keys[event.code] = false;
             });
             
-            // Mouse controls (kept intact)
+            // Mouse controls
             let isPointerLocked = false;
             
             renderer.domElement.addEventListener('click', () => {
@@ -982,7 +568,7 @@
                 }
             });
             
-            // Window resize (composer resize is handled in setupComposer)
+            // Window resize
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
@@ -1152,7 +738,6 @@
             player.position.copy(newPosition);
             
             // Crystal collection
-            // (Note: splice-while-iterating is OK here due to immediate return; for safety you can iterate backwards)
             crystals.forEach((crystal, index) => {
                 const distance = player.position.distanceTo(crystal.position);
                 if (distance < 3) {
@@ -1266,7 +851,7 @@
                     particle.userData.life--;
                     particle.position.add(particle.userData.velocity);
                     particle.userData.velocity.y -= 0.01; // gravity
-                    particle.material.opacity = Math.max(0, particle.userData.life / 60); // [FX] clamp
+                    particle.material.opacity = particle.userData.life / 60;
                     
                     if (particle.userData.life <= 0) {
                         scene.remove(particle);
@@ -1283,35 +868,6 @@
                     if (particle.position.z < -150) particle.position.z = 150;
                 }
             });
-
-            // [FX] Optional: soft pulsing nebula opacity
-            scene.traverse(obj => {
-                if (obj.isSprite) { obj.material.opacity = 0.7 + 0.1 * Math.sin(Date.now() * 0.0005); }
-            });
-
-            if (bgDebris) {
-            bgDebris.rotation.y += 0.00025;
-            bgDebris.rotation.x += 0.00005;
-            }
-
-            // Gentle idle spin for meteors
-            scene.traverse(obj => {
-              if (obj.userData && obj.userData.meteorSpin) {
-                obj.rotation.y += obj.userData.meteorSpin;
-              }
-      });
-
-
-        }
-
-        // [FX] Outline helper: highlight nearby crystals (if enabled)
-        function updateOutlineNearPlayer() {
-            if (!outlinePass || !outlinePass.enabled || !player) return;
-            const targets = [];
-            for (const c of crystals) {
-                if (player.position.distanceTo(c.position) < 12) targets.push(c);
-            }
-            outlinePass.selectedObjects = targets;
         }
         
         function updateUI() {
@@ -1440,20 +996,12 @@
             if (gameStarted) {
                 updatePlayer();
                 updateAnimations();
-
-                // [FX] Outline (nearby crystals) if enabled
-                updateOutlineNearPlayer();
             }
-
-            // [FX] Use composer if present, else fall back
-            if (composer) {
-                composer.render();
-            } else {
-                renderer.render(scene, camera);
-            }
+            
+            renderer.render(scene, camera);
         }
         
-        // UI Control Functions (kept intact)
+        // UI Control Functions
         function startGame() {
             document.getElementById('menu').style.display = 'none';
             document.getElementById('ui').style.display = 'block';
@@ -1515,8 +1063,7 @@ University of the Witwatersrand, Johannesburg
 • Glow effects and transparency
 • Animated floating debris
 • Crystal rotation animations
-• Space sky box - https://opengameart.org/
-• Rock textures - freepbr.com
+• Gradient skybox
 • Platform edge lighting
 
 🎵 INNOVATION:
