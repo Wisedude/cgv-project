@@ -224,9 +224,9 @@
     <script>
         // Game state variables
         let scene, camera, renderer, gameStarted = false;
-        let player, playerVelocity = new THREE.Vector3();
-        let platforms = [], crystals = [], collectibles = [];
-        let keys = {}, mouseX = 0, mouseY = 0;
+    let player, playerVelocity = new THREE.Vector3();
+    let platforms = [], crystals = [], collectibles = [];
+    let keys = {}, cameraYaw = 0, cameraPitch = 0;
         let currentLevel = 1, maxLevel = 3;
         let collectedCrystals = 0, totalCrystals = 10;
         let lives = 3, score = 0, gameTime = 60;
@@ -556,9 +556,15 @@
             
             document.addEventListener('mousemove', (event) => {
                 if (isPointerLocked && gameStarted) {
-                    mouseX += event.movementX * 0.002;
-                    mouseY += event.movementY * 0.002;
-                    mouseY = Math.max(-Math.PI/2, Math.min(Math.PI/2, mouseY));
+                    const sensitivity = 0.002;
+                    cameraYaw += event.movementX * sensitivity;
+                    cameraPitch -= event.movementY * sensitivity;
+
+                    if (cameraYaw > Math.PI) cameraYaw -= Math.PI * 2;
+                    if (cameraYaw < -Math.PI) cameraYaw += Math.PI * 2;
+
+                    const maxPitch = Math.PI / 2 - 0.1;
+                    cameraPitch = Math.max(-maxPitch, Math.min(maxPitch, cameraPitch));
                 }
             });
             
@@ -781,20 +787,32 @@
         
         function updateCameraPosition() {
             if (!player) return;
+
+            const lookDirection = new THREE.Vector3(
+                Math.sin(cameraYaw) * Math.cos(cameraPitch),
+                Math.sin(cameraPitch),
+                -Math.cos(cameraYaw) * Math.cos(cameraPitch)
+            ).normalize();
+            const headOffset = new THREE.Vector3(0, 1, 0);
             
             switch(cameraMode) {
                 case 0: // Third-person
-                    const offset = new THREE.Vector3(0, 8, 15);
-                    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), -mouseX);
-                    camera.position.copy(player.position).add(offset);
-                    camera.lookAt(player.position);
+                    const followDistance = 15;
+                    const verticalOffset = 8;
+                    const thirdPersonOffset = lookDirection.clone().multiplyScalar(-followDistance);
+                    thirdPersonOffset.y += verticalOffset;
+                    if (thirdPersonOffset.y < 1) thirdPersonOffset.y = 1;
+
+                    camera.position.copy(player.position).add(thirdPersonOffset);
+
+                    const lookTarget = player.position.clone().add(headOffset).add(lookDirection.clone().multiplyScalar(2));
+                    camera.lookAt(lookTarget);
                     break;
                     
                 case 1: // First-person
-                    camera.position.copy(player.position);
-                    camera.position.y += 1;
-                    camera.rotation.y = mouseX;
-                    camera.rotation.x = mouseY;
+                    const firstPersonPosition = player.position.clone().add(headOffset);
+                    camera.position.copy(firstPersonPosition);
+                    camera.lookAt(firstPersonPosition.clone().add(lookDirection));
                     break;
                     
                 case 2: // Top-down
@@ -948,6 +966,8 @@
             lives = 3;
             score = 0;
             collectedCrystals = 0;
+            cameraYaw = 0;
+            cameraPitch = 0;
             
             clearLevel();
         }
@@ -980,6 +1000,8 @@
             document.getElementById('ui').style.display = 'block';
             document.getElementById('controls').style.display = 'block';
             
+            cameraYaw = 0;
+            cameraPitch = 0;
             loadLevel(currentLevel);
             gameStarted = true;
             console.log('Crystal Collector 3D - Game Started!');
