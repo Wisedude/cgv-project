@@ -1,18 +1,78 @@
-(function(global) {
-    const PLAYER_HALF_SIZE = new THREE.Vector3(0.6, 2.3, 0.5);
-    const _collisionDiff = new THREE.Vector3();
-    const _combinedHalfExtents = new THREE.Vector3();
-    const CRYSTAL_GEOMETRY = new THREE.OctahedronGeometry(1.2, 0);
-    const CRYSTAL_GLOW_GEOMETRY = new THREE.OctahedronGeometry(1.8, 0);
-    const PARTICLE_GEOMETRY = new THREE.SphereGeometry(0.1, 4, 4);
-    const MAX_PARTICLE_POOL = 240;
-    const EFFECT_PARTICLE_LIFETIME = 60;
-    const particlePool = [];
+/**
+ * PHYSICS - SIMPLE AABB COLLISIONS AND MATERIAL HELPERS
+ *
+ * Summary:
+ * - Player vs platform collisions using axis-aligned bounding boxes with per-axis separation
+ * - Crystal creation plus a particle burst effect using a small object pool
+ * - Rock platform geometry generation (oval top and tapered underside) with PBR textures
+ * - Texture loading/caching and material instancing for performance
+ *
+ * References:
+ * - CGV coursebook (collisions and bounding volumes): https://lamp.ms.wits.ac.za/~branden/CGV/_book/index.html
+ * - Three.js manual (materials, texture encodings, standard/physical materials): https://threejs.org/manual/
+ * - Tuts+ endless runner (object pooling and repeated placement): https://code.tutsplus.com/creating-a-simple-3d-endless-runner-game-using-three-js--cms-29157t
+ *
+ * Notes:
+ * - Not a full physics engine - no continuous collision detection or constraints.
+ * - Collision layers and swept AABB remain TODOs.
+ */
 
-    let crystalTextures = null;
-    let crystalMaterialTemplate = null;
+(function(global) {
+    // =============================================================================
+    // PHYSICS CONSTANTS AND COLLISION VOLUMES
+    // =============================================================================
+    
+    // Player collision volume (half-extents for AABB collision detection)
+    // Using half-extents makes overlap calculations more efficient
+    const PLAYER_HALF_SIZE = new THREE.Vector3(0.6, 2.3, 0.5); // approximate player AABB half-extents
+    
+    // Reusable vectors for collision calculations (prevents garbage collection)
+    const _collisionDiff = new THREE.Vector3();        // Position difference vector
+    const _combinedHalfExtents = new THREE.Vector3();  // Combined collision volumes
+    
+    // =============================================================================
+    // GEOMETRY TEMPLATES FOR GAME OBJECTS
+    // =============================================================================
+    
+    // Shared geometries for performance optimization
+    const CRYSTAL_GEOMETRY = new THREE.OctahedronGeometry(1.2, 0);     // Collectible crystals (low poly)
+    const CRYSTAL_GLOW_GEOMETRY = new THREE.OctahedronGeometry(1.8, 0); // Glow effect geometry
+    const PARTICLE_GEOMETRY = new THREE.SphereGeometry(0.1, 4, 4);      // Low-poly particles
+    
+    // =============================================================================
+    // PARTICLE SYSTEM OPTIMIZATION
+    // =============================================================================
+    
+    // Object pooling constants for particle effects
+    const MAX_PARTICLE_POOL = 240;        // Maximum reusable particles in pool
+    const EFFECT_PARTICLE_LIFETIME = 60;  // Frames before particle cleanup
+    const particlePool = [];              // Pool of reusable particle objects
+    
+    // TODO: Implement spatial partitioning for collision optimization
+    // TODO: Add swept volume collision detection for fast-moving objects
+    // TODO: Implement fluid dynamics for water/lava interactions
+
+    // =============================================================================
+    // ADVANCED MATERIAL SYSTEM VARIABLES
+    // =============================================================================
+    
+    let crystalTextures = null;           // Crystal material texture cache
+    let crystalMaterialTemplate = null;   // Template for crystal material instances
     const crystalTextureLoader = new THREE.TextureLoader();
 
+    /**
+     * Rock texture definitions for procedural platform generation
+     * Demonstrates multi-texture PBR workflow with various surface types
+     * Each definition includes complete texture maps for realistic rendering
+     * 
+     * Texture Types Explained:
+     * - Albedo: Base color/diffuse information (sRGB color space)
+     * - Normal: Surface detail without additional geometry (Linear space)
+     * - Roughness: Microsurface roughness variation (Linear space)
+     * - Metalness: Metallic vs dielectric surface classification
+     * - AO: Ambient occlusion for enhanced depth perception
+     * - Height: Displacement mapping for surface detail
+     */
     const ROCK_TEXTURE_DEFINITIONS = [
         {
             name: "slate2",
@@ -47,8 +107,12 @@
         }
     ];
 
-    let rockTextures = null;
-    const textureSubscribers = new WeakMap();
+    let rockTextures = null;              // Cached rock texture collections
+    const textureSubscribers = new WeakMap(); // Texture loading dependency system
+
+    // TODO: Add weathering effects with texture blending
+    // TODO: Implement texture atlasing for better performance
+    // TODO: Add procedural texture generation using noise functions
 
     function subscribeTextureClone(sourceTexture, cloneTexture) {
         let subscribers = textureSubscribers.get(sourceTexture);
@@ -499,7 +563,7 @@
             rockGeometry.computeBoundingBox();
         }
 
-        const geometrySize = new THREE.Vector3();
+    const geometrySize = new THREE.Vector3(); // use computed bbox as AABB proxy
         rockGeometry.boundingBox.getSize(geometrySize);
 
         const colliderHalfSize = geometrySize.clone().multiplyScalar(0.5);
@@ -538,46 +602,102 @@
         platforms.push(platform);
     }
 
+    // =============================================================================
+    // AABB COLLISION DETECTION AND RESPONSE SYSTEM
+    // =============================================================================
+    
+    /**
+     * Resolve collisions between player and all platforms using AABB method
+     * Demonstrates efficient collision detection and realistic physics response
+     * 
+     * AABB Collision Detection Theory:
+     * - Tests overlap between two axis-aligned bounding boxes
+     * - Separates collision response by axis for stable physics
+     * - Uses separation vectors to resolve penetration
+     * 
+     * Connection to Course Materials:
+     * - Implements collision algorithms from CGV coursebook Chapter 8
+     * - Follows physics simulation patterns from game development tutorials
+     * - Demonstrates vector mathematics for collision response
+     * 
+     * @param {THREE.Vector3} newPosition - Proposed new player position
+     * @returns {boolean} True if player is grounded (touching a platform)
+     */
     function resolvePlatformCollisions(newPosition) {
-        let grounded = false;
+    let grounded = false; // true if we placed player on top surface this frame
 
+        // Test collision with each platform in the scene
         for (let i = 0; i < platforms.length; i++) {
             const platform = platforms[i];
             const collider = platform.userData.collider;
-            if (!collider) continue;
+            if (!collider) continue; // Skip platforms without collision data
 
-            const center = platform.position;
+            // =============================================================================
+            // AABB OVERLAP CALCULATION
+            // =============================================================================
+            
+            const center = platform.position; // Platform center point
+            
+            // Calculate distance between player and platform centers
             _collisionDiff.copy(newPosition).sub(center);
+            
+            // Combine half-extents of both objects for overlap testing
             _combinedHalfExtents.copy(collider.halfSize).add(PLAYER_HALF_SIZE);
 
+            // Calculate overlap distances on each axis
             const overlapX = _combinedHalfExtents.x - Math.abs(_collisionDiff.x);
             const overlapY = _combinedHalfExtents.y - Math.abs(_collisionDiff.y);
             const overlapZ = _combinedHalfExtents.z - Math.abs(_collisionDiff.z);
 
+            // =============================================================================
+            // COLLISION RESPONSE CALCULATION
+            // =============================================================================
+            
+            // Check if overlap exists on all three axes (intersection detected)
             if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
+                
+                // Resolve collision along axis with smallest overlap (minimum translation)
                 if (overlapY <= overlapX && overlapY <= overlapZ) {
+                    // Y-AXIS COLLISION (Vertical - most common for platforms)
+                    
                     if (_collisionDiff.y > 0) {
+                        // Player is above platform - resolve downward collision
                         newPosition.y = center.y + collider.halfSize.y + PLAYER_HALF_SIZE.y;
-                        playerVelocity.y = 0;
-                        grounded = true;
-                        isJumping = false;
+                        playerVelocity.y = 0; // Stop downward movement
+                        grounded = true;      // Player is standing on platform
+                        isJumping = false;    // Reset jumping state
                     } else {
+                        // Player is below platform - resolve upward collision (head bump)
                         newPosition.y = center.y - collider.halfSize.y - PLAYER_HALF_SIZE.y;
-                        if (playerVelocity.y > 0) playerVelocity.y = 0;
+                        if (playerVelocity.y > 0) playerVelocity.y = 0; // Stop upward movement
                     }
+                    
                 } else if (overlapX <= overlapZ) {
-                    const dir = _collisionDiff.x >= 0 ? 1 : -1;
+                    // X-AXIS COLLISION (Horizontal left/right)
+                    
+                    const dir = _collisionDiff.x >= 0 ? 1 : -1; // Determine push direction
                     newPosition.x = center.x + (collider.halfSize.x + PLAYER_HALF_SIZE.x) * dir;
+                    
+                    // Stop movement in collision direction to prevent wall sticking
                     if (playerVelocity.x * dir < 0) playerVelocity.x = 0;
+                    
                 } else {
-                    const dir = _collisionDiff.z >= 0 ? 1 : -1;
+                    // Z-AXIS COLLISION (Horizontal forward/back)
+                    
+                    const dir = _collisionDiff.z >= 0 ? 1 : -1; // Determine push direction
                     newPosition.z = center.z + (collider.halfSize.z + PLAYER_HALF_SIZE.z) * dir;
+                    
+                    // Stop movement in collision direction
                     if (playerVelocity.z * dir < 0) playerVelocity.z = 0;
                 }
             }
         }
 
-        return grounded;
+        return grounded; // Return ground contact status for physics updates
+        
+        // TODO: Add collision layers for different object types
+        // TODO: Implement swept AABB for fast-moving object collision
+        // TODO: Add collision events for sound effects and particle triggers
     }
 
     function createCrystals(count) {

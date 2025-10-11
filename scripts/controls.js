@@ -1,37 +1,107 @@
+/**
+ * INPUT CONTROL AND SETTINGS
+ *
+ * Summary:
+ * - Keyboard (WASD, Space, C, R, Escape) and mouse movement handling
+ * - Pointer Lock API on the renderer canvas when the game is running
+ * - Settings persisted in localStorage (volume, sensitivity, invert Y, show FPS)
+ * - UI bindings for sliders/checkboxes with live label updates
+ * - Pause/menu toggling that also pauses/resumes background audio if present
+ *
+ * References:
+ * - MDN demo with Three.js (Pointer Lock and input patterns): https://developer.mozilla.org/en-US/docs/Games/Techniques/3D_on_the_web/Building_up_a_basic_demo_with_Three.js
+ * - Codrops interactive 3D character (camera look and input feel): https://tympanus.net/codrops/2019/10/14/how-to-create-an-interactive-3d-character-with-three-js/
+ * - Three.js manual (resizing and renderer canvas): https://threejs.org/manual/
+ *
+ * Notes:
+ * - Gamepad support and key remapping are TODOs and not implemented here.
+ */
+
 (function(global) {
+    // =============================================================================
+    // SETTINGS SYSTEM CONFIGURATION
+    // =============================================================================
+    
+    // Local storage key for settings persistence (versioned for compatibility)
     const SETTINGS_STORAGE_KEY = 'cc3d-settings-v1';
+    
+    /**
+     * Default settings configuration providing sensible starting values
+     * These values are carefully chosen for optimal gameplay experience:
+     * - Music volume: Low enough to not overpower sound effects
+     * - SFX volume: High enough for clear audio feedback
+     * - Mouse sensitivity: Balanced for precise control without overshooting
+     * - Invert Y: False by default (standard FPS convention)
+     * - Show FPS: Enabled for performance monitoring
+     */
     const DEFAULT_SETTINGS = {
-        musicVolume: 0.25,
-        sfxVolume: 0.7,
-        mouseSensitivity: 0.002,
-        invertY: false,
-        showFPS: true
+        musicVolume: 0.25,          // Background music level (0.0 - 1.0)
+        sfxVolume: 0.7,             // Sound effects volume (0.0 - 1.0)
+        mouseSensitivity: 0.002,    // Mouse movement multiplier
+        invertY: false,             // Invert vertical mouse movement
+        showFPS: true               // Display performance counter
     };
 
-    let gameSettings = null;
-    let settingsListenersAttached = false;
+    // Runtime settings state
+    let gameSettings = null;           // Current active settings
+    let settingsListenersAttached = false; // Track event listener state
 
+    // TODO: Add gamepad/controller support (Gamepad API)
+    // TODO: Implement key binding customization system
+    // TODO: Add graphics quality presets (low/medium/high)
+    // TODO: Create accessibility options (colorblind support, text scaling)
+
+    // =============================================================================
+    // UTILITY FUNCTIONS FOR DATA VALIDATION
+    // =============================================================================
+    
+    /**
+     * Utility function to constrain values within safe bounds
+     * Prevents settings from causing gameplay issues or crashes
+     * 
+     * @param {number} value - Value to constrain
+     * @param {number} min - Minimum allowed value
+     * @param {number} max - Maximum allowed value
+     * @returns {number} Safely constrained value
+     */
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
     }
 
+    /**
+     * Validate and normalize settings object to prevent corruption
+     * Ensures all settings have valid values within acceptable ranges
+     * Provides safety against malformed localStorage data
+     * 
+     * @param {Object} rawSettings - Unvalidated settings object
+     * @returns {Object} Validated and normalized settings
+     */
     function normalizeSettings(rawSettings) {
-        const normalized = { ...DEFAULT_SETTINGS };
+        const normalized = { ...DEFAULT_SETTINGS }; // Start with safe defaults
+        
+        // Validate input object
         if (!rawSettings || typeof rawSettings !== 'object') {
-            return normalized;
+            return normalized; // Return defaults for invalid input
         }
 
+        // Validate and constrain music volume
         if (rawSettings.musicVolume !== undefined) {
             normalized.musicVolume = clamp(Number(rawSettings.musicVolume) || 0, 0, 1);
         }
+        
+        // Validate and constrain sound effects volume
         if (rawSettings.sfxVolume !== undefined) {
             normalized.sfxVolume = clamp(Number(rawSettings.sfxVolume) || 0, 0, 1);
         }
+        
+        // Validate and constrain mouse sensitivity (prevent unusably high/low values)
         if (rawSettings.mouseSensitivity !== undefined) {
             normalized.mouseSensitivity = clamp(Number(rawSettings.mouseSensitivity) || 0, 0.001, 0.02);
         }
+        
+        // Validate boolean settings with safe conversion
         if (rawSettings.invertY !== undefined) {
-            normalized.invertY = !!rawSettings.invertY;
+            normalized.invertY = !!rawSettings.invertY; // Convert to boolean safely
         }
         if (rawSettings.showFPS !== undefined) {
             normalized.showFPS = !!rawSettings.showFPS;
@@ -40,41 +110,91 @@
         return normalized;
     }
 
+    // =============================================================================
+    // SETTINGS PERSISTENCE SYSTEM
+    // =============================================================================
+    
+    /**
+     * Load settings from browser localStorage with error handling
+     * Implements robust data recovery and validation for user preferences
+     * Falls back to defaults if loading fails or data is corrupted
+     * 
+     * @returns {Object} Validated settings object
+     */
     function loadSettings() {
         try {
+            // Check for localStorage availability (some browsers may disable it)
             const stored = global.localStorage ? global.localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
+            
             if (!stored) {
-                return { ...DEFAULT_SETTINGS };
+                return { ...DEFAULT_SETTINGS }; // No stored data, use defaults
             }
+            
+            // Parse JSON data with error handling
             const parsed = JSON.parse(stored);
-            return normalizeSettings(parsed);
+            return normalizeSettings(parsed); // Validate and normalize loaded data
+            
         } catch (err) {
             console.warn('[Settings] Failed to load settings, using defaults.', err);
-            return { ...DEFAULT_SETTINGS };
+            return { ...DEFAULT_SETTINGS }; // Return safe defaults on any error
         }
     }
 
+    /**
+     * Save settings to browser localStorage with error handling
+     * Ensures user preferences persist across browser sessions
+     * Gracefully handles storage quota exceeded and privacy mode issues
+     * 
+     * @param {Object} settings - Settings object to persist
+     */
     function saveSettings(settings) {
         try {
+            // Check for localStorage availability before attempting save
             if (!global.localStorage) return;
+            
+            // Serialize and store settings data
             global.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+            
         } catch (err) {
             console.warn('[Settings] Failed to save settings.', err);
+            // TODO: Implement fallback storage method (cookies, session storage)
+            // TODO: Show user notification about settings save failure
         }
     }
 
+    // =============================================================================
+    // UI ELEMENT ACCESS AND MANAGEMENT
+    // =============================================================================
+    
+    /**
+     * Get references to all settings-related DOM elements
+     * Centralizes element access for easier maintenance and debugging
+     * Returns object with all form elements for batch operations
+     * 
+     * @returns {Object} Collection of DOM element references
+     */
     function getSettingsFormElements() {
         return {
             panel: document.getElementById('settingsMenu'),
             home: document.getElementById('menuHome'),
+            
+            // Audio controls
             musicSlider: document.getElementById('musicVolume'),
             musicValue: document.getElementById('musicVolumeValue'),
             sfxSlider: document.getElementById('sfxVolume'),
             sfxValue: document.getElementById('sfxVolumeValue'),
+            
+            // Input controls
             sensitivitySlider: document.getElementById('mouseSensitivity'),
             sensitivityValue: document.getElementById('mouseSensitivityValue'),
             invertCheckbox: document.getElementById('invertYAxis'),
+            
+            // Display controls
             fpsCheckbox: document.getElementById('showFps')
+            
+            // TODO: Add graphics quality controls (affect renderer and shadow map sizes)
+            // TODO: Add accessibility option elements
+            // TODO: Add key binding customization elements
         };
     }
 
@@ -115,7 +235,7 @@
 
     function getSettingsFromForm() {
         const elements = getSettingsFormElements();
-        const rawSensitivity = elements.sensitivitySlider ? Number(elements.sensitivitySlider.value) : DEFAULT_SETTINGS.mouseSensitivity * 1000;
+    const rawSensitivity = elements.sensitivitySlider ? Number(elements.sensitivitySlider.value) : DEFAULT_SETTINGS.mouseSensitivity * 1000; // integer slider scaled by 1000
 
         return normalizeSettings({
             musicVolume: elements.musicSlider ? Number(elements.musicSlider.value) / 100 : DEFAULT_SETTINGS.musicVolume,
@@ -277,7 +397,7 @@
                 if (cameraYaw > Math.PI) cameraYaw -= Math.PI * 2;
                 if (cameraYaw < -Math.PI) cameraYaw += Math.PI * 2;
 
-                const maxPitch = Math.PI / 2 - 0.1;
+                const maxPitch = Math.PI / 2 - 0.1; // clamp to avoid flipping
                 cameraPitch = Math.max(-maxPitch, Math.min(maxPitch, cameraPitch));
             }
         });
