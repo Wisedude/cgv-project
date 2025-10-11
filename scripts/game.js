@@ -332,11 +332,13 @@ function startTimer() {
             updateUI();
 
             if (gameTime <= 0) {
-                lives--;
-                if (lives <= 0) {
-                    gameOver();
-                } else {
-                    restartLevel();
+                if (lives > 0) {
+                    lives--;
+                    if (lives <= 0) {
+                        gameOver();
+                    } else {
+                        restartLevel();
+                    }
                 }
             }
         }
@@ -396,6 +398,40 @@ function gameOver() {
     }
 }
 
+function restartGame() {
+    // Reset game state to beginning
+    currentLevel = 1;
+    lives = 3;
+    score = 0;
+    gameTime = 60;
+    collectedCrystals = 0;
+    totalCrystals = 0;
+    gameStarted = false;
+    levelCompleteActive = false;
+    
+    // Clear any existing timer
+    if (gameTimer) clearInterval(gameTimer);
+    
+    // Hide game over screen
+    document.getElementById('gameOver').style.display = 'none';
+    
+    // Load first level and start game
+    loadLevel(currentLevel);
+    gameStarted = true;
+    
+    // Update UI
+    updateUI();
+    
+    // Restart background music
+    if (window.audioManager && typeof window.audioManager.startBackground === 'function') {
+        try {
+            window.audioManager.startBackground();
+        } catch (err) {
+            console.warn('[Audio] Failed to restart background music', err);
+        }
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate);
 
@@ -434,5 +470,8 @@ function getTimestamp() {
         ? performance.now()
         : Date.now();
 }
+
+// Make restartGame available globally
+window.restartGame = restartGame;
 
 window.addEventListener('load', init);
