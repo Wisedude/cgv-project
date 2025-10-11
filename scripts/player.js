@@ -665,13 +665,15 @@
         }
 
         if (_newPosition.y < -50) {
-            lives--;
-            if (lives <= 0) {
-                if (typeof global.gameOver === "function") {
-                    global.gameOver();
+            if (lives > 0) {
+                lives--;
+                if (lives <= 0) {
+                    if (typeof global.gameOver === "function") {
+                        global.gameOver();
+                    }
+                } else {
+                    respawnPlayer();
                 }
-            } else {
-                respawnPlayer();
             }
             return;
         }
