@@ -281,6 +281,67 @@ function init() {
     setupRendererResizeHandling(); // Responsive design for window resizing
 
     // =============================================================================
+    // ENHANCED SYSTEMS INITIALIZATION
+    // =============================================================================
+    // Initialize graphics settings system
+    if (typeof GraphicsSettings !== 'undefined') {
+        try {
+            GraphicsSettings.init();
+            console.log('Graphics Settings system initialized');
+        } catch (error) {
+            console.warn('Failed to initialize Graphics Settings:', error);
+        }
+    }
+
+    // Initialize performance monitoring first (before heavy systems)
+    if (typeof PerformanceMonitor !== 'undefined') {
+        try {
+            PerformanceMonitor.start();
+            console.log('Performance Monitor initialized');
+        } catch (error) {
+            console.warn('Failed to initialize Performance Monitor:', error);
+        }
+    }
+
+    // Initialize enhanced audio system
+    if (typeof EnhancedAudio !== 'undefined') {
+        try {
+            const audioSuccess = EnhancedAudio.init();
+            if (audioSuccess) {
+                console.log('Enhanced Audio system initialized');
+            }
+        } catch (error) {
+            console.warn('Failed to initialize Enhanced Audio:', error);
+        }
+    }
+
+    // Initialize enhanced particle system (after scene is fully set up)
+    if (typeof EnhancedParticles !== 'undefined' && scene) {
+        try {
+            // Wait a bit for the scene to be fully initialized
+            setTimeout(() => {
+                EnhancedParticles.init();
+                console.log('Enhanced Particle system initialized');
+            }, 100);
+        } catch (error) {
+            console.warn('Failed to initialize Enhanced Particles:', error);
+        }
+    }
+
+    // Initialize story manager last
+    if (typeof StoryManager !== 'undefined') {
+        try {
+            // Delay story manager to ensure game is ready
+            setTimeout(() => {
+                StoryManager.init();
+                console.log('Story Manager initialized');
+            }, 500);
+        } catch (error) {
+            console.warn('Failed to initialize Story Manager:', error);
+        }
+    }
+
+    // =============================================================================
     // UI AND PERFORMANCE MONITORING
     // =============================================================================
     fpsElement = document.getElementById('fpsCounter');
@@ -294,7 +355,19 @@ function init() {
     // START RENDER LOOP
     // =============================================================================
     animate(); // Begin continuous rendering loop
-    console.log('Crystal Collector 3D initialized');
+    
+    // Export core variables to global scope for enhanced systems
+    window.scene = scene;
+    window.camera = camera;
+    window.renderer = renderer;
+    window.gameStarted = gameStarted;
+    
+    // Also export to global object for consistency
+    global.scene = scene;
+    global.camera = camera;
+    global.renderer = renderer;
+    
+    console.log('Crystal Collector 3D initialized with enhanced systems');
     
     // TODO: Add performance profiling for optimization
     // TODO: Implement level-of-detail (LOD) system for complex scenes
@@ -614,6 +687,12 @@ function startGame() {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('ui').style.display = 'block';
     document.getElementById('controls').style.display = 'block';
+    
+    // Show minimap during gameplay
+    const minimap = document.getElementById('minimap');
+    if (minimap) {
+        minimap.style.display = 'block';
+    }
 
     if (window.audioManager && typeof window.audioManager.init === 'function') {
         try {
@@ -644,6 +723,17 @@ function gameOver() {
     gameStarted = false;
     if (gameTimer) clearInterval(gameTimer);
     document.getElementById('gameOver').style.display = 'block';
+    
+    // Hide minimap when game ends
+    const minimap = document.getElementById('minimap');
+    if (minimap) {
+        minimap.style.display = 'none';
+    }
+    
+    // Trigger story manager for game over
+    if (typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
+        StoryManager.trackProgress('gameOver');
+    }
 
     if (window.audioManager) {
         if (typeof window.audioManager.playLose === 'function') {
@@ -684,6 +774,12 @@ function restartGame() {
     
     // Hide game over screen
     document.getElementById('gameOver').style.display = 'none';
+    
+    // Show minimap when restarting game
+    const minimap = document.getElementById('minimap');
+    if (minimap) {
+        minimap.style.display = 'block';
+    }
     
     // Load first level and start game
     loadLevel(currentLevel);
@@ -767,8 +863,29 @@ function animate() {
         // Update visual animations (particles, environment, UI)
         updateAnimations(); // Particle systems, object animations, effects
         
+        // Update enhanced particle systems (safely)
+        if (typeof EnhancedParticles !== 'undefined' && EnhancedParticles.isInitialized && EnhancedParticles.isInitialized()) {
+            try {
+                EnhancedParticles.update();
+            } catch (error) {
+                console.warn('Error updating Enhanced Particles:', error);
+            }
+        }
+        
+        // Update enhanced audio system (safely)
+        if (typeof EnhancedAudio !== 'undefined' && EnhancedAudio.isInitialized && EnhancedAudio.isInitialized()) {
+            try {
+                EnhancedAudio.update();
+                // Update 3D audio listener position
+                if (camera) {
+                    EnhancedAudio.updateListener(camera);
+                }
+            } catch (error) {
+                console.warn('Error updating Enhanced Audio:', error);
+            }
+        }
+        
         // TODO: Update AI systems for moving platforms or enemies
-        // TODO: Process sound spatialization based on camera position
         // TODO: Update weather and environmental effects
     }
 

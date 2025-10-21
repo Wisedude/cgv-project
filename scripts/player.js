@@ -667,6 +667,12 @@
         if (_newPosition.y < -50) {
             if (lives > 0) {
                 lives--;
+                
+                // Trigger low health warning when only 1 life remains
+                if (lives === 1 && typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
+                    StoryManager.trackProgress('lowHealth');
+                }
+                
                 if (lives <= 0) {
                     if (typeof global.gameOver === "function") {
                         global.gameOver();

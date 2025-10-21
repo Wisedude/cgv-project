@@ -768,7 +768,20 @@
         createParticleEffect(crystal.position, crystal.material.color);
         callAudio('playCoin');
 
-        if (collectedCrystals >= totalCrystals) {
+        // Check if level is complete
+        const isComplete = collectedCrystals >= totalCrystals;
+        
+        // Trigger story manager progress tracking
+        if (typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
+            StoryManager.trackProgress('crystalCollected', {
+                level: currentLevel,
+                collected: collectedCrystals,
+                total: totalCrystals,
+                isLevelComplete: isComplete
+            });
+        }
+
+        if (isComplete) {
             levelComplete();
         }
 

@@ -39,7 +39,11 @@
         sfxVolume: 0.7,             // Sound effects volume (0.0 - 1.0)
         mouseSensitivity: 0.002,    // Mouse movement multiplier
         invertY: false,             // Invert vertical mouse movement
-        showFPS: true               // Display performance counter
+        showFPS: true,              // Display performance counter
+        graphicsPreset: 'MEDIUM',   // Graphics quality preset
+        postProcessing: true,       // Post-processing effects
+        dynamicShadows: true,       // Dynamic shadow rendering
+        autoOptimize: false         // Automatic performance optimization
     };
 
     // Runtime settings state
@@ -105,6 +109,23 @@
         }
         if (rawSettings.showFPS !== undefined) {
             normalized.showFPS = !!rawSettings.showFPS;
+        }
+        
+        // Validate graphics settings
+        if (rawSettings.graphicsPreset !== undefined) {
+            const validPresets = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA', 'CUSTOM'];
+            normalized.graphicsPreset = validPresets.includes(rawSettings.graphicsPreset) 
+                ? rawSettings.graphicsPreset 
+                : DEFAULT_SETTINGS.graphicsPreset;
+        }
+        if (rawSettings.dynamicShadows !== undefined) {
+            normalized.dynamicShadows = !!rawSettings.dynamicShadows;
+        }
+        if (rawSettings.postProcessing !== undefined) {
+            normalized.postProcessing = !!rawSettings.postProcessing;
+        }
+        if (rawSettings.autoOptimize !== undefined) {
+            normalized.autoOptimize = !!rawSettings.autoOptimize;
         }
 
         return normalized;
@@ -190,11 +211,13 @@
             invertCheckbox: document.getElementById('invertYAxis'),
             
             // Display controls
-            fpsCheckbox: document.getElementById('showFps')
+            fpsCheckbox: document.getElementById('showFps'),
             
-            // TODO: Add graphics quality controls (affect renderer and shadow map sizes)
-            // TODO: Add accessibility option elements
-            // TODO: Add key binding customization elements
+            // Graphics controls
+            graphicsPreset: document.getElementById('graphicsPreset'),
+            dynamicShadows: document.getElementById('dynamicShadows'),
+            postProcessing: document.getElementById('postProcessing'),
+            autoOptimize: document.getElementById('autoOptimize')
         };
     }
 
@@ -219,10 +242,13 @@
         }
 
         if (elements.sensitivitySlider) {
-            elements.sensitivitySlider.value = Math.round(settings.mouseSensitivity * 1000);
+            // Convert 0.002 default to scale 1-10 where 5 = 0.002
+            const sliderValue = Math.round(settings.mouseSensitivity * 2500); // 0.002 * 2500 = 5
+            elements.sensitivitySlider.value = Math.max(1, Math.min(10, sliderValue));
         }
         if (elements.sensitivityValue) {
-            elements.sensitivityValue.textContent = settings.mouseSensitivity.toFixed(3);
+            const sliderVal = elements.sensitivitySlider ? Number(elements.sensitivitySlider.value) : 5;
+            elements.sensitivityValue.textContent = sliderVal.toString();
         }
 
         if (elements.invertCheckbox) {
@@ -231,18 +257,43 @@
         if (elements.fpsCheckbox) {
             elements.fpsCheckbox.checked = !!settings.showFPS;
         }
+        
+        // Graphics settings
+        if (elements.graphicsPreset) {
+            elements.graphicsPreset.value = settings.graphicsPreset || 'MEDIUM';
+            // Update custom controls visibility
+            const customControls = document.getElementById('customGraphicsControls');
+            if (customControls) {
+                customControls.style.display = settings.graphicsPreset === 'CUSTOM' ? 'block' : 'none';
+            }
+        }
+        if (elements.dynamicShadows) {
+            elements.dynamicShadows.checked = !!settings.dynamicShadows;
+        }
+        if (elements.postProcessing) {
+            elements.postProcessing.checked = !!settings.postProcessing;
+        }
+        if (elements.autoOptimize) {
+            elements.autoOptimize.checked = !!settings.autoOptimize;
+        }
     }
 
     function getSettingsFromForm() {
         const elements = getSettingsFormElements();
-    const rawSensitivity = elements.sensitivitySlider ? Number(elements.sensitivitySlider.value) : DEFAULT_SETTINGS.mouseSensitivity * 1000; // integer slider scaled by 1000
+        const rawSensitivity = elements.sensitivitySlider ? Number(elements.sensitivitySlider.value) : 5; // 1-10 scale
 
         return normalizeSettings({
             musicVolume: elements.musicSlider ? Number(elements.musicSlider.value) / 100 : DEFAULT_SETTINGS.musicVolume,
             sfxVolume: elements.sfxSlider ? Number(elements.sfxSlider.value) / 100 : DEFAULT_SETTINGS.sfxVolume,
-            mouseSensitivity: clamp(rawSensitivity, 1, 20) / 1000,
+            mouseSensitivity: rawSensitivity / 2500, // Convert 1-10 scale to 0.0004-0.004 range
             invertY: elements.invertCheckbox ? elements.invertCheckbox.checked : DEFAULT_SETTINGS.invertY,
-            showFPS: elements.fpsCheckbox ? elements.fpsCheckbox.checked : DEFAULT_SETTINGS.showFPS
+            showFPS: elements.fpsCheckbox ? elements.fpsCheckbox.checked : DEFAULT_SETTINGS.showFPS,
+            
+            // Graphics settings
+            graphicsPreset: elements.graphicsPreset ? elements.graphicsPreset.value : DEFAULT_SETTINGS.graphicsPreset,
+            dynamicShadows: elements.dynamicShadows ? elements.dynamicShadows.checked : DEFAULT_SETTINGS.dynamicShadows,
+            postProcessing: elements.postProcessing ? elements.postProcessing.checked : DEFAULT_SETTINGS.postProcessing,
+            autoOptimize: elements.autoOptimize ? elements.autoOptimize.checked : DEFAULT_SETTINGS.autoOptimize
         });
     }
 
@@ -250,6 +301,12 @@
         if (settingsListenersAttached) return;
         const elements = getSettingsFormElements();
         if (!elements.panel) return;
+
+        // Setup tab switching
+        setupSettingsTabs();
+        
+        // Setup graphics preset handler
+        setupGraphicsPresetHandler();
 
         const updateLabels = () => {
             if (elements.musicSlider && elements.musicValue) {
@@ -259,7 +316,7 @@
                 elements.sfxValue.textContent = `${Math.round(Number(elements.sfxSlider.value))}%`;
             }
             if (elements.sensitivitySlider && elements.sensitivityValue) {
-                elements.sensitivityValue.textContent = (Number(elements.sensitivitySlider.value) / 1000).toFixed(3);
+                elements.sensitivityValue.textContent = Number(elements.sensitivitySlider.value).toString();
             }
         };
 
@@ -276,6 +333,45 @@
         }
 
         settingsListenersAttached = true;
+    }
+
+    function setupSettingsTabs() {
+        const tabs = document.querySelectorAll('.settings-tab');
+        const tabContents = document.querySelectorAll('.settings-tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetTab = tab.dataset.tab;
+                
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                
+                // Show corresponding content
+                const targetContent = document.getElementById(targetTab + 'Tab');
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+            });
+        });
+    }
+    
+    function setupGraphicsPresetHandler() {
+        const presetSelect = document.getElementById('graphicsPreset');
+        const customControls = document.getElementById('customGraphicsControls');
+        
+        if (presetSelect && customControls) {
+            const toggleCustomControls = () => {
+                const isCustom = presetSelect.value === 'CUSTOM';
+                customControls.style.display = isCustom ? 'block' : 'none';
+            };
+            
+            presetSelect.addEventListener('change', toggleCustomControls);
+            toggleCustomControls(); // Initial state
+        }
     }
 
     function applySettings(settings, options = {}) {
@@ -296,12 +392,27 @@
             tracker.style.display = normalized.showFPS ? 'block' : 'none';
         }
 
+        // Apply audio settings
         if (global.audioManager) {
             if (typeof global.audioManager.setBackgroundVolume === 'function') {
                 global.audioManager.setBackgroundVolume(normalized.musicVolume);
             }
             if (typeof global.audioManager.setSfxVolume === 'function') {
                 global.audioManager.setSfxVolume(normalized.sfxVolume);
+            }
+        }
+        
+        // Apply graphics settings
+        if (global.GraphicsSettings) {
+            if (typeof global.GraphicsSettings.applyPreset === 'function') {
+                global.GraphicsSettings.applyPreset(normalized);
+            }
+        }
+        
+        // Apply performance monitoring settings
+        if (global.PerformanceMonitor) {
+            if (typeof global.PerformanceMonitor.enableAutoOptimize === 'function') {
+                global.PerformanceMonitor.enableAutoOptimize(normalized.autoOptimize);
             }
         }
     }
@@ -330,6 +441,18 @@
             updateSettingsForm(gameSettings || DEFAULT_SETTINGS);
         }
         hideSettingsPanel();
+        
+        // If game is paused, return to pause menu instead of main menu
+        const menu = document.getElementById('menu');
+        if (menu && menu.style.display === 'block' && !gameStarted) {
+            const menuHome = document.getElementById('menuHome');
+            const pauseMenu = document.getElementById('pauseMenu');
+            
+            // If we're in a paused game state, show pause menu
+            if (menuHome && menuHome.classList.contains('hidden')) {
+                if (pauseMenu) pauseMenu.classList.remove('hidden');
+            }
+        }
     }
 
     function applySettingsAndClose() {
@@ -423,32 +546,156 @@
     }
 
     function togglePause() {
-        const menu = document.getElementById('menu');
-        if (!menu) return;
-
         if (gameStarted) {
-            closeSettings(true);
-            menu.style.display = 'block';
-            gameStarted = false;
-            if (window.audioManager && typeof window.audioManager.pauseBackground === 'function') {
-                try {
-                    window.audioManager.pauseBackground();
-                } catch (err) {
-                    console.warn('[Audio] Failed to pause background music', err);
-                }
-            }
-        } else if (menu.style.display === 'block') {
-            closeSettings(true);
-            menu.style.display = 'none';
-            gameStarted = true;
-            if (window.audioManager && typeof window.audioManager.resumeBackground === 'function') {
-                try {
-                    window.audioManager.resumeBackground();
-                } catch (err) {
-                    console.warn('[Audio] Failed to resume background music', err);
-                }
+            showPauseMenu();
+        } else {
+            resumeGame();
+        }
+    }
+
+    function showPauseMenu() {
+        const menu = document.getElementById('menu');
+        const menuHome = document.getElementById('menuHome');
+        const pauseMenu = document.getElementById('pauseMenu');
+        const settingsMenu = document.getElementById('settingsMenu');
+        
+        if (!menu || !pauseMenu) return;
+
+        // Hide other menu panels
+        closeSettings(true);
+        if (menuHome) menuHome.classList.add('hidden');
+        if (settingsMenu) settingsMenu.classList.add('hidden');
+        
+        // Show pause menu
+        pauseMenu.classList.remove('hidden');
+        menu.style.display = 'block';
+        
+        // Pause game
+        gameStarted = false;
+        
+        // Pause audio
+        if (window.audioManager && typeof window.audioManager.pauseBackground === 'function') {
+            try {
+                window.audioManager.pauseBackground();
+            } catch (err) {
+                console.warn('[Audio] Failed to pause background music', err);
             }
         }
+        
+        console.log('Game paused');
+    }
+
+    function resumeGame() {
+        const menu = document.getElementById('menu');
+        const pauseMenu = document.getElementById('pauseMenu');
+        
+        if (!menu) return;
+
+        // Hide pause menu
+        if (pauseMenu) pauseMenu.classList.add('hidden');
+        menu.style.display = 'none';
+        
+        // Resume game
+        gameStarted = true;
+        
+        // Resume audio
+        if (window.audioManager && typeof window.audioManager.resumeBackground === 'function') {
+            try {
+                window.audioManager.resumeBackground();
+            } catch (err) {
+                console.warn('[Audio] Failed to resume background music', err);
+            }
+        }
+        
+        console.log('Game resumed');
+    }
+
+    function showPauseSettings() {
+        const pauseMenu = document.getElementById('pauseMenu');
+        const settingsMenu = document.getElementById('settingsMenu');
+        
+        if (pauseMenu) pauseMenu.classList.add('hidden');
+        if (settingsMenu) settingsMenu.classList.remove('hidden');
+    }
+
+    function backToMainMenu() {
+        const menu = document.getElementById('menu');
+        const menuHome = document.getElementById('menuHome');
+        const pauseMenu = document.getElementById('pauseMenu');
+        const settingsMenu = document.getElementById('settingsMenu');
+        
+        // Reset game state
+        gameStarted = false;
+        
+        // Reset menu visibility
+        if (pauseMenu) pauseMenu.classList.add('hidden');
+        if (settingsMenu) settingsMenu.classList.add('hidden');
+        if (menuHome) menuHome.classList.remove('hidden');
+        
+        // Show main menu
+        if (menu) menu.style.display = 'block';
+        
+        // Hide game UI
+        const ui = document.getElementById('ui');
+        const controls = document.getElementById('controls');
+        if (ui) ui.style.display = 'none';
+        if (controls) controls.style.display = 'none';
+        
+        // Stop audio
+        if (window.audioManager && typeof window.audioManager.pauseBackground === 'function') {
+            try {
+                window.audioManager.pauseBackground();
+            } catch (err) {
+                console.warn('[Audio] Failed to pause background music', err);
+            }
+        }
+        
+        // Reset camera controls
+        exitPointerLock();
+        
+        console.log('Returned to main menu');
+    }
+
+    function restartLevel() {
+        resumeGame();
+        if (typeof window.restartGame === 'function') {
+            window.restartGame();
+        }
+    }
+
+    function showGameInfo() {
+        closeSettings(true);
+        alert(`💡 Crystal Collector 3D - Enhanced Features:
+
+🎮 GAME FEATURES:
+• Immersive 3D space environment with asteroids
+• Dynamic story progression with mission objectives
+• Multiple camera perspectives (3rd person, 1st person)
+• Advanced particle effects and cosmic atmosphere
+• 3D spatial audio (use headphones for best experience)
+
+⚙️ SETTINGS EXPLAINED:
+
+🔊 AUDIO SETTINGS:
+• Music Volume: Background ambient music
+• Sound Effects: Game action sounds (jumps, collisions, collections)
+
+🎮 CONTROL SETTINGS:
+• Mouse Sensitivity: How fast camera moves with mouse
+• Invert Y-Axis: Flight-style controls (up = down, down = up)
+• Performance Info: Shows FPS and technical details
+
+📺 GRAPHICS SETTINGS:
+• Quality Preset: Overall visual quality vs performance
+  - Low: Best performance, simpler visuals
+  - Medium: Balanced quality and performance
+  - High: Better visuals, needs good graphics card
+  - Ultra: Maximum quality, requires powerful hardware
+• Dynamic Shadows: Realistic moving shadows (impacts performance)
+• Visual Effects: Enhanced lighting and atmospheric effects
+• Auto-Optimize: Automatically reduces quality if game runs slowly
+
+🎯 TIP: Start with Medium quality and adjust based on performance!`);
     }
 
     function showInstructions() {
@@ -456,29 +703,27 @@
         alert(`🎮 Crystal Collector 3D - How to Play:
 
 🎯 OBJECTIVE:
-Collect all crystals in each level before time runs out!
+Navigate through space and collect all power cores to restore your ship!
 
 🎮 CONTROLS:
 • WASD - Move your character
 • SPACE - Jump & Double Jump (limited by cooldown)
 • Mouse - Look around (click to lock cursor)
-• C - Switch camera views (3rd person, 1st person, top-down)
+• C - Switch camera views (3rd person, 1st person)
 • ESC - Pause/Resume game
 • R - Restart current level
 
 💎 GAMEPLAY:
-• Navigate floating platforms in 3D space
-• Collect glowing crystals to progress
-• Each level has more crystals and longer time limits
+• Collect glowing crystals scattered across floating platforms
+• Follow mission objectives shown in the top-left corner
+• Watch the story unfold as you progress through levels
+• Experience immersive 3D audio with headphones
 • You have 3 lives - don't fall off platforms!
-• Bonus points awarded for remaining time
 
-🏆 SCORING:
-• 100 × Level points per crystal
-• 10 points per remaining second
-• Complete all 3 levels to win!
+🚀 STORY:
+Your mining ship was damaged by a solar storm. The power cores are scattered across an asteroid field. Collect them to restore ship systems and return home safely!
 
-Good luck, crystal collector!`);
+Good luck, commander!`);
     }
 
     function showCredits() {
@@ -566,9 +811,16 @@ Made with ❤️ using Three.js`);
     global.switchCamera = switchCamera;
     global.togglePause = togglePause;
     global.showInstructions = showInstructions;
+    global.showGameInfo = showGameInfo;
     global.showCredits = showCredits;
     global.backToMenu = backToMenu;
     global.openSettings = openSettings;
     global.closeSettings = closeSettings;
     global.applySettingsAndClose = applySettingsAndClose;
+    
+    // New pause menu functions
+    global.resumeGame = resumeGame;
+    global.showPauseSettings = showPauseSettings;
+    global.backToMainMenu = backToMainMenu;
+    global.restartLevel = restartLevel;
 })(window);

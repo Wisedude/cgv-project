@@ -212,6 +212,11 @@
         if (typeof updateUI === 'function') {
             updateUI();
         }
+        
+        // Trigger story manager for level start
+        if (typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
+            StoryManager.trackProgress('levelStart', { level: levelNum });
+        }
 
         if (typeof hideLoadingScreen === 'function') {
             requestAnimationFrame(() => hideLoadingScreen(500));
@@ -266,6 +271,14 @@
         document.getElementById('levelStats').textContent =
             `Crystals: ${collectedCrystals}/${totalCrystals} | Time Bonus: ${gameTime * 10} | Total Score: ${score}`;
         document.getElementById('levelComplete').style.display = 'block';
+        
+        // Trigger story manager for level completion
+        if (typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
+            if (currentLevel >= 3 && collectedCrystals >= totalCrystals) {
+                // Game completely finished
+                StoryManager.trackProgress('gameComplete');
+            }
+        }
     }
 
     global.levelConfigs = levelConfigs;

@@ -22,50 +22,168 @@
             <p>Navigate floating platforms and collect all crystals!</p>
 
             <div id="menuHome" class="menu-panel">
-                <button class="button" onclick="startGame()">Start Adventure</button>
-                <button class="button" onclick="showInstructions()">How to Play</button>
-                <button class="button" onclick="showCredits()">Credits</button>
-                <button class="button secondary" onclick="openSettings()">Settings</button>
+                <button class="button" onclick="startGame()">🚀 Start Adventure</button>
+                <button class="button" onclick="showInstructions()">📖 How to Play</button>
+                <button class="button" onclick="showGameInfo()">💡 Game Features</button>
+                <button class="button" onclick="showCredits()">👥 Credits</button>
+                <button class="button secondary" onclick="openSettings()">⚙️ Settings</button>
+            </div>
+
+            <div id="pauseMenu" class="menu-panel hidden">
+                <h2>Game Paused</h2>
+                <button class="button" onclick="resumeGame()">Resume Game</button>
+                <button class="button" onclick="restartLevel()">Restart Level</button>
+                <button class="button secondary" onclick="showPauseSettings()">Settings</button>
+                <button class="button secondary" onclick="backToMainMenu()">Back to Main Menu</button>
             </div>
 
             <div id="settingsMenu" class="menu-panel hidden">
                 <h2>Settings</h2>
-                <div class="settings-group">
-                    <label for="musicVolume">Music Volume</label>
-                    <div class="settings-control">
-                        <input type="range" id="musicVolume" min="0" max="100" step="5">
-                        <span id="musicVolumeValue" class="settings-value">25%</span>
+                
+                <!-- Settings Tabs -->
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="audio">🔊 Audio</button>
+                    <button class="settings-tab" data-tab="controls">🎮 Controls</button>
+                    <button class="settings-tab" data-tab="graphics">📺 Graphics</button>
+                    <button class="settings-tab" data-tab="performance">⚡ Performance</button>
+                </div>
+
+                <!-- Audio Settings Tab -->
+                <div id="audioTab" class="settings-tab-content active">
+                    <div class="settings-group">
+                        <label for="musicVolume">
+                            Music Volume
+                            <span class="tooltip" data-tooltip="Background music volume level">ℹ️</span>
+                        </label>
+                        <div class="settings-control">
+                            <input type="range" id="musicVolume" min="0" max="100" step="5">
+                            <span id="musicVolumeValue" class="settings-value">25%</span>
+                        </div>
+                    </div>
+                    <div class="settings-group">
+                        <label for="sfxVolume">
+                            Sound Effects Volume
+                            <span class="tooltip" data-tooltip="Volume for game sounds like crystal collection, jumping, etc.">ℹ️</span>
+                        </label>
+                        <div class="settings-control">
+                            <input type="range" id="sfxVolume" min="0" max="100" step="5">
+                            <span id="sfxVolumeValue" class="settings-value">70%</span>
+                        </div>
                     </div>
                 </div>
-                <div class="settings-group">
-                    <label for="sfxVolume">SFX Volume</label>
-                    <div class="settings-control">
-                        <input type="range" id="sfxVolume" min="0" max="100" step="5">
-                        <span id="sfxVolumeValue" class="settings-value">70%</span>
+
+                <!-- Controls Settings Tab -->
+                <div id="controlsTab" class="settings-tab-content">
+                    <div class="settings-group">
+                        <label for="mouseSensitivity">
+                            Mouse Sensitivity
+                            <span class="tooltip" data-tooltip="How fast the camera moves when you move your mouse">ℹ️</span>
+                        </label>
+                        <div class="settings-control">
+                            <input type="range" id="mouseSensitivity" min="1" max="10" step="1">
+                            <span id="mouseSensitivityValue" class="settings-value">5</span>
+                        </div>
+                    </div>
+                    <div class="settings-toggle">
+                        <label for="invertYAxis">
+                            <span>Invert Y-Axis <span class="tooltip" data-tooltip="Reverses up/down mouse movement (like flight controls)">ℹ️</span></span>
+                        </label>
+                        <input type="checkbox" id="invertYAxis">
+                    </div>
+                    
+                    <div class="settings-info">
+                        <p>🎮 <strong>Game Controls:</strong></p>
+                        <div class="controls-grid">
+                            <div class="control-item">
+                                <strong>W A S D</strong> - Move Around
+                            </div>
+                            <div class="control-item">
+                                <strong>SPACE</strong> - Jump
+                            </div>
+                            <div class="control-item">
+                                <strong>MOUSE</strong> - Look Around
+                            </div>
+                            <div class="control-item">
+                                <strong>ESC</strong> - Pause Menu
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="settings-group">
-                    <label for="mouseSensitivity">Mouse Sensitivity</label>
-                    <div class="settings-control">
-                        <input type="range" id="mouseSensitivity" min="1" max="20" step="1">
-                        <span id="mouseSensitivityValue" class="settings-value">0.002</span>
+
+                <!-- Graphics Settings Tab -->
+                <div id="graphicsTab" class="settings-tab-content">
+                    <div class="settings-group">
+                        <label for="graphicsPreset">
+                            Quality Preset
+                            <span class="tooltip" data-tooltip="Overall graphics quality: Low (best performance), Ultra (best visuals). Automatically configures shadows and effects.">ℹ️</span>
+                        </label>
+                        <div class="settings-control">
+                            <select id="graphicsPreset" class="settings-select">
+                                <option value="LOW">⚡ Low (Fast)</option>
+                                <option value="MEDIUM" selected>⚖️ Medium (Balanced)</option>
+                                <option value="HIGH">✨ High (Beautiful)</option>
+                                <option value="ULTRA">🔥 Ultra (Max Quality)</option>
+                                <option value="CUSTOM">🔧 Custom</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="customGraphicsControls" class="custom-graphics" style="display: none;">
+                        <div class="settings-toggle">
+                            <label for="dynamicShadows">
+                                <span>Dynamic Shadows <span class="tooltip" data-tooltip="Realistic shadows that move with objects (impacts performance)">ℹ️</span></span>
+                            </label>
+                            <input type="checkbox" id="dynamicShadows" checked>
+                        </div>
+
+                        <div class="settings-toggle">
+                            <label for="postProcessing">
+                                <span>Visual Effects <span class="tooltip" data-tooltip="Enhanced lighting and atmospheric effects">ℹ️</span></span>
+                            </label>
+                            <input type="checkbox" id="postProcessing" checked>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-info">
+                        <p>🎨 <strong>Quality Guide:</strong></p>
+                        <ul>
+                            <li><strong>Low:</strong> Basic visuals, maximum FPS</li>
+                            <li><strong>Medium:</strong> Balanced quality and performance</li>
+                            <li><strong>High:</strong> Enhanced visuals, good performance</li>
+                            <li><strong>Ultra:</strong> Maximum quality, requires powerful GPU</li>
+                            <li><strong>Custom:</strong> Manual control over individual settings</li>
+                        </ul>
                     </div>
                 </div>
-                <div class="settings-toggle">
-                    <label for="invertYAxis">
-                        <span>Invert Y-Axis</span>
-                    </label>
-                    <input type="checkbox" id="invertYAxis">
+                
+                <!-- Performance Settings Tab -->
+                <div id="performanceTab" class="settings-tab-content">
+                    <div class="settings-toggle">
+                        <label for="showFps">
+                            <span>Show Performance Monitor <span class="tooltip" data-tooltip="Display FPS counter, memory usage, and render statistics">ℹ️</span></span>
+                        </label>
+                        <input type="checkbox" id="showFps">
+                    </div>
+                    <div class="settings-toggle">
+                        <label for="autoOptimize">
+                            <span>Auto-Optimize Graphics <span class="tooltip" data-tooltip="Automatically reduce quality if FPS drops below 30">ℹ️</span></span>
+                        </label>
+                        <input type="checkbox" id="autoOptimize">
+                    </div>
+                    <div class="settings-info">
+                        <p>🎯 <strong>Performance Tips:</strong></p>
+                        <ul>
+                            <li>• <strong>Low FPS?</strong> Try "Low" graphics quality first</li>
+                            <li>• <strong>Still slow?</strong> Disable shadows and visual effects</li>
+                            <li>• <strong>Want automatic help?</strong> Enable auto-optimize</li>
+                            <li>• <strong>Monitor performance:</strong> Enable FPS counter to track improvements</li>
+                        </ul>
+                    </div>
                 </div>
-                <div class="settings-toggle">
-                    <label for="showFps">
-                        <span>Show FPS Counter</span>
-                    </label>
-                    <input type="checkbox" id="showFps">
-                </div>
+                
                 <div class="settings-actions">
-                    <button class="button" onclick="applySettingsAndClose()">Save Settings</button>
-                    <button class="button secondary" onclick="closeSettings(true)">Cancel</button>
+                    <button class="button" onclick="applySettingsAndClose()">💾 Save Settings</button>
+                    <button class="button secondary" onclick="closeSettings(true)">❌ Cancel</button>
                 </div>
             </div>
         </div>
@@ -121,6 +239,11 @@
     <script src="scripts/lighting.js" defer></script>
     <script src="scripts/controls.js" defer></script>
     <script src="scripts/minimap.js" defer></script>
+    <script src="scripts/graphics-settings.js" defer></script>
+    <script src="scripts/story-manager.js" defer></script>
+    <script src="scripts/enhanced-particles.js" defer></script>
+    <script src="scripts/enhanced-audio.js" defer></script>
+    <script src="scripts/performance-monitor.js" defer></script>
     <script src="scripts/game.js" defer></script>
 </body>
 </html>
