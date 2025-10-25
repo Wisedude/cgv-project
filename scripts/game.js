@@ -221,6 +221,9 @@ function init() {
     // Create procedural or texture-based skybox
     createSkybox();
 
+    //backdrop added
+    createBackdrop(scene);
+
     // =============================================================================
     // CAMERA SETUP - Viewing frustum and projection
     // =============================================================================
@@ -899,6 +902,8 @@ function animate() {
         // TODO: Implement light culling for performance optimization
     }
 
+    //update backdrop
+    updateBackdrop();
     // =============================================================================
     // FINAL RENDERING PASS
     // =============================================================================
@@ -916,6 +921,151 @@ function getTimestamp() {
         ? performance.now()
         : Date.now();
 }
+
+// =================== SPACE BACKDROP (rocket, satellite, procedural asteroids) ===================
+(function () {
+  const BACKDROP = {
+    asteroidIMesh: null,
+    radiusMin: 230,
+    radiusMax: 520,
+    ringThickness: 140,
+    clock: new THREE.Clock(),
+  };
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  const loader = new THREE.GLTFLoader();
+
+  // -------- procedural asteroid belt (no model needed) --------
+  function addProceduralAsteroidBelt(scene) {
+    // Start with a small icosahedron and dent its vertices to get a rocky look
+    const base = new THREE.IcosahedronGeometry(1.6, 1); // low-poly
+    const pos = base.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const nx = (Math.random() - 0.5) * 0.45;
+      const ny = (Math.random() - 0.5) * 0.45;
+      const nz = (Math.random() - 0.5) * 0.45;
+      pos.setXYZ(i,
+        pos.getX(i) + nx,
+        pos.getY(i) + ny,
+        pos.getZ(i) + nz
+      );
+    }
+    pos.needsUpdate = true;
+    base.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x9fa3a8,
+      roughness: 0.95,
+      metalness: 0.05
+    });
+
+    const count = BACKDROP.asteroidCount;
+    const imesh = new THREE.InstancedMesh(base, mat, count);
+    imesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    imesh.castShadow = false; imesh.receiveShadow = false;
+    imesh.layers.set(BACKDROP.layer);
+
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < count; i++) {
+      const ringR = rand(BACKDROP.radiusMin, BACKDROP.radiusMax);
+      const jitter = rand(-BACKDROP.ringThickness/2, BACKDROP.ringThickness/2);
+      const ang = rand(0, Math.PI*2);
+      const x = Math.cos(ang) * (ringR + jitter);
+      const z = Math.sin(ang) * (ringR + jitter);
+      const y = rand(-60, 60);
+
+      // squash/scale non-uniformly for variety
+      const sx = rand(0.6, 2.3), sy = rand(0.6, 2.0), sz = rand(0.6, 2.3);
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(rand(0,Math.PI), rand(0,Math.PI), rand(0,Math.PI));
+      dummy.scale.set(sx, sy, sz);
+      dummy.updateMatrix();
+      imesh.setMatrixAt(i, dummy.matrix);
+    }
+    imesh.instanceMatrix.needsUpdate = true;
+    scene.add(imesh);
+    BACKDROP.asteroidIMesh = imesh;
+  }
+
+  // -------- static satellites --------
+  function addSatellites(scene, gltf) {
+    for (let i = 0; i < 5; i++) {
+      const root = gltf.scene.clone(true);
+      const R = rand(300, 520);
+      const a = rand(0, Math.PI*2);
+      root.position.set(Math.cos(a)*R, rand(-60,60), Math.sin(a)*R);
+      root.rotation.y = rand(0, Math.PI*2);
+      const s = rand(3, 6);
+      root.scale.setScalar(s);
+      root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+      root.updateMatrixWorld(true);
+      root.matrixAutoUpdate = false;
+      root.layers.set(BACKDROP.layer);
+      scene.add(root);
+      BACKDROP.objects.push(root);
+    }
+  }
+
+  // -------- distant rocket “capital ship” --------
+  function addDistantRocket(scene, gltf) {
+    const ship = gltf.scene.clone(true);
+    ship.position.set(-360, 70, -520);
+    ship.scale.setScalar(7);
+    ship.traverse(o => { if (o.isMesh) { o.material.roughness = 0.9; o.material.metalness = 0.1; } });
+    ship.updateMatrixWorld(true);
+    ship.matrixAutoUpdate = false;
+    ship.layers.set(BACKDROP.layer);
+    scene.add(ship);
+    BACKDROP.objects.push(ship);
+  }
+
+  // -------- tiny comet (particles; no model) --------
+  function addComet(scene) {
+    const comet = new THREE.Object3D();
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(2, 0),
+      new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, emissive: 0x334455 })
+    );
+    comet.add(core);
+
+    const pCount = 450;
+    const tailGeo = new THREE.BufferGeometry();
+    const p = new Float32Array(pCount * 3);
+    for (let i = 0; i < pCount; i++) { p[i*3+0]=0; p[i*3+1]=0; p[i*3+2]=0; }
+    tailGeo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    const tailMat = new THREE.PointsMaterial({ size: 3, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    const tail = new THREE.Points(tailGeo, tailMat);
+    comet.add(tail);
+
+    comet.position.set(420, 120, 380);
+    comet.userData = { tail, vel: new THREE.Vector3(-0.6, -0.1, -0.5) };
+    comet.layers.set(BACKDROP.layer);
+    scene.add(comet);
+    BACKDROP.comet = comet;
+  }
+
+  function gentleRotateAsteroids(dt) {
+    if (!BACKDROP.asteroidIMesh) return;
+    BACKDROP.asteroidIMesh.rotation.y += dt * 0.02;
+  }
+
+  // -------- public API --------
+  window.createBackdrop = function createBackdrop(scene, onReady) {
+  addProceduralAsteroidBelt(scene);
+
+  loader.load('assets/models/satellite.glb', (gltf) => addSatellites(scene, gltf));
+  loader.load('assets/models/rocket.glb', (gltf) => addDistantRocket(scene, gltf));
+
+  if (onReady) onReady();
+};
+
+window.updateBackdrop = function updateBackdrop() {
+  // If you keep a clock, pass dt. If not, just call gentleRotateAsteroids() with no args after editing it (see step 5).
+  gentleRotateAsteroids(1 / 60);
+};
+
+})();
 
 // Make restartGame available globally
 window.restartGame = restartGame;
