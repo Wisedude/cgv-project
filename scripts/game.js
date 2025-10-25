@@ -924,102 +924,169 @@ function getTimestamp() {
 
 // =================== SPACE BACKDROP (rocket, satellite, procedural asteroids) ===================
 (function () {
-  const BACKDROP = {
-    asteroidIMesh: null,
-    radiusMin: 230,
-    radiusMax: 520,
-    ringThickness: 140,
-    clock: new THREE.Clock(),
-  };
+const BACKDROP = {
+  radiusMin: 430,
+  radiusMax: 470,
+  ringThickness: 14,
+  SAT_RADIUS_MIN: 480,   
+  SAT_RADIUS_MAX: 498, 
+  clock: new THREE.Clock(),
+  layer: 0,
+  objects: [],
+  SATELLITE_COUNT: 2
+};
+
+function ringPos(randFn, Rmin, Rmax, thickness) {
+  const R = randFn(Rmin, Rmax);
+  const jitter = randFn(-thickness/2, thickness/2);
+  const finalR = Math.max(Rmin, Math.min(Rmax, R + jitter));
+  const ang = randFn(0, Math.PI * 2);
+  return { R: Math.min(finalR, 498), ang }; // safety clamp under fog far
+}
+
 
   function rand(min, max) { return min + Math.random() * (max - min); }
-
-  const loader = new THREE.GLTFLoader();
-
-  // -------- procedural asteroid belt (no model needed) --------
-  function addProceduralAsteroidBelt(scene) {
-    // Start with a small icosahedron and dent its vertices to get a rocky look
-    const base = new THREE.IcosahedronGeometry(1.6, 1); // low-poly
-    const pos = base.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const nx = (Math.random() - 0.5) * 0.45;
-      const ny = (Math.random() - 0.5) * 0.45;
-      const nz = (Math.random() - 0.5) * 0.45;
-      pos.setXYZ(i,
-        pos.getX(i) + nx,
-        pos.getY(i) + ny,
-        pos.getZ(i) + nz
-      );
-    }
-    pos.needsUpdate = true;
-    base.computeVertexNormals();
-
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x9fa3a8,
-      roughness: 0.95,
-      metalness: 0.05
-    });
-
-    const count = BACKDROP.asteroidCount;
-    const imesh = new THREE.InstancedMesh(base, mat, count);
-    imesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    imesh.castShadow = false; imesh.receiveShadow = false;
-    imesh.layers.set(BACKDROP.layer);
-
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < count; i++) {
-      const ringR = rand(BACKDROP.radiusMin, BACKDROP.radiusMax);
-      const jitter = rand(-BACKDROP.ringThickness/2, BACKDROP.ringThickness/2);
-      const ang = rand(0, Math.PI*2);
-      const x = Math.cos(ang) * (ringR + jitter);
-      const z = Math.sin(ang) * (ringR + jitter);
-      const y = rand(-60, 60);
-
-      // squash/scale non-uniformly for variety
-      const sx = rand(0.6, 2.3), sy = rand(0.6, 2.0), sz = rand(0.6, 2.3);
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(rand(0,Math.PI), rand(0,Math.PI), rand(0,Math.PI));
-      dummy.scale.set(sx, sy, sz);
-      dummy.updateMatrix();
-      imesh.setMatrixAt(i, dummy.matrix);
-    }
-    imesh.instanceMatrix.needsUpdate = true;
-    scene.add(imesh);
-    BACKDROP.asteroidIMesh = imesh;
+  function ringPos(randFn, Rmin, Rmax, thickness) {
+    const R = randFn(Rmin, Rmax);
+    const jitter = randFn(-thickness/2, thickness/2);
+    const finalR = Math.max(Rmin, Math.min(Rmax - 2, R + jitter));
+    const ang = randFn(0, Math.PI * 2);
+    return { R: finalR, ang };
   }
 
-  // -------- static satellites --------
+
+const loader = new THREE.GLTFLoader();
+
+if (THREE.DRACOLoader) {
+  const dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+  loader.setDRACOLoader(dracoLoader);
+}
+if (window.MeshoptDecoder) {
+  loader.setMeshoptDecoder(MeshoptDecoder);
+}
+
+
+  // ------- asteroid belt (uses clamped radius) -------
+function addProceduralAsteroidBelt(scene) {
+  const base = new THREE.IcosahedronGeometry(1.6, 1);
+  // ... (keep your vertex denting code)
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x9fa3a8,
+    roughness: 0.95,
+    metalness: 0.05,
+    emissive: 0x0a0f18,           // subtle glow so they read in space
+    emissiveIntensity: 0.15
+  });
+
+  const count = BACKDROP.asteroidCount || 300;
+  const imesh = new THREE.InstancedMesh(base, mat, count);
+  imesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  imesh.castShadow = false; imesh.receiveShadow = false;
+  imesh.layers.set(BACKDROP.layer);
+
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < count; i++) {
+    const p = ringPos(rand, BACKDROP.radiusMin, BACKDROP.radiusMax, BACKDROP.ringThickness);
+    const y = rand(-60, 60);
+    dummy.position.set(p.x, y, p.z);
+    // ... (keep your rotation/scale)
+    dummy.updateMatrix();
+    imesh.setMatrixAt(i, dummy.matrix);
+  }
+  imesh.instanceMatrix.needsUpdate = true;
+  scene.add(imesh);
+  BACKDROP.asteroidIMesh = imesh;
+}
+
+  // --- Satellites (farther + motion) ---
   function addSatellites(scene, gltf) {
-    for (let i = 0; i < 5; i++) {
+
+    for (let i = 0; i < BACKDROP.SATELLITE_COUNT; i++) {
       const root = gltf.scene.clone(true);
-      const R = rand(300, 520);
-      const a = rand(0, Math.PI*2);
-      root.position.set(Math.cos(a)*R, rand(-60,60), Math.sin(a)*R);
-      root.rotation.y = rand(0, Math.PI*2);
-      const s = rand(3, 6);
-      root.scale.setScalar(s);
-      root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
-      root.updateMatrixWorld(true);
-      root.matrixAutoUpdate = false;
+
+       // pick a ring position & motion params (use SAT band)
+      const rp = ringPos(rand, BACKDROP.SAT_RADIUS_MIN, BACKDROP.SAT_RADIUS_MAX, BACKDROP.ringThickness);
+      const y = rand(40, 80);
+      const angVel = rand(0.03, 0.06);           // radians/sec, slow orbit
+      const bobAmp = rand(1.5, 3.0);             // vertical bob amplitude
+      const bobSpeed = rand(0.4, 0.8);           // bob speed
+
+      // initial placement
+      root.position.set(Math.cos(rp.ang) * rp.R, y, Math.sin(rp.ang) * rp.R);
+      root.rotation.y = rand(0, Math.PI * 2);
+      root.scale.setScalar(rand(3, 6));
+
+      // nicer readability in dark scenes
+      root.traverse(o => {
+        if (o.isMesh) {
+          o.castShadow = false; o.receiveShadow = false;
+          if (o.material && 'emissive' in o.material) {
+            o.material.emissive = new THREE.Color(0x334455);
+            o.material.emissiveIntensity = 0.25;
+          }
+          o.frustumCulled = false;
+        }
+      });
+
+      // IMPORTANT: enable updates for motion
+      root.matrixAutoUpdate = true;
+
+      // store motion params
+      root.userData.orbit = {
+        R: rp.R,
+        ang: rp.ang,
+        angVel,
+        baseY: y,
+        bobAmp,
+        bobSpeed,
+        selfSpin: rand(0.1, 0.3)
+      };
+
       root.layers.set(BACKDROP.layer);
       scene.add(root);
       BACKDROP.objects.push(root);
     }
   }
 
-  // -------- distant rocket “capital ship” --------
+ // --- Rocket (farther + slow cruise) ---
   function addDistantRocket(scene, gltf) {
     const ship = gltf.scene.clone(true);
-    ship.position.set(-360, 70, -520);
+
+    // place on far ring with its own motion
+    const rp = ringPos(rand, BACKDROP.radiusMin, BACKDROP.radiusMax, BACKDROP.ringThickness);
+    const y = 80;
+    ship.position.set(Math.cos(rp.ang) * rp.R, y, Math.sin(rp.ang) * rp.R);
     ship.scale.setScalar(7);
-    ship.traverse(o => { if (o.isMesh) { o.material.roughness = 0.9; o.material.metalness = 0.1; } });
-    ship.updateMatrixWorld(true);
-    ship.matrixAutoUpdate = false;
+
+    ship.traverse(o => {
+      if (o.isMesh) {
+        o.material.roughness = 0.9;
+        o.material.metalness = 0.1;
+        if ('emissive' in o.material) {
+          o.material.emissive = new THREE.Color(0x223344);
+          o.material.emissiveIntensity = 0.35;
+        }
+        o.frustumCulled = false;
+      }
+    });
+
+    ship.matrixAutoUpdate = true;
+    ship.userData.orbit = {
+      R: rp.R,
+      ang: rp.ang,
+      angVel: 0.02,          // slower orbit than satellites
+      baseY: y,
+      bobAmp: 6.0,           // gentle bob
+      bobSpeed: 0.25,
+      selfSpin: 0.05
+    };
+
     ship.layers.set(BACKDROP.layer);
     scene.add(ship);
     BACKDROP.objects.push(ship);
   }
-
   // -------- tiny comet (particles; no model) --------
   function addComet(scene) {
     const comet = new THREE.Object3D();
@@ -1050,20 +1117,46 @@ function getTimestamp() {
     BACKDROP.asteroidIMesh.rotation.y += dt * 0.02;
   }
 
+    // --- Motion update ---
+  function updateOrbits(dt) {
+    for (const o of BACKDROP.objects) {
+      const orb = o.userData.orbit;
+      if (!orb) continue;
+      orb.ang += orb.angVel * dt;
+      const x = Math.cos(orb.ang) * orb.R;
+      const z = Math.sin(orb.ang) * orb.R;
+      const y = orb.baseY + Math.sin((performance.now()/1000) * orb.bobSpeed) * orb.bobAmp;
+      const tilt = 0.08; // radians; gentle tilt
+      const xt = x;
+      const zt = z * Math.cos(tilt) - (o.position.y * Math.sin(tilt));
+      o.position.set(xt, y, zt);
+      o.rotation.y += (orb.selfSpin * dt);
+    }
+  }
+
   // -------- public API --------
   window.createBackdrop = function createBackdrop(scene, onReady) {
-  addProceduralAsteroidBelt(scene);
+    
+    // addProceduralAsteroidBelt(scene);
 
-  loader.load('assets/models/satellite.glb', (gltf) => addSatellites(scene, gltf));
-  loader.load('assets/models/rocket.glb', (gltf) => addDistantRocket(scene, gltf));
+    loader.load('assets/models/satellite.glb',
+      (gltf) => addSatellites(scene, gltf),
+      undefined, (err) => console.warn('satellite FAILED', err)
+    );
 
-  if (onReady) onReady();
-};
+    loader.load('assets/models/rocket.glb',
+      (gltf) => addDistantRocket(scene, gltf),
+      undefined, (err) => console.warn('rocket FAILED', err)
+    );
 
-window.updateBackdrop = function updateBackdrop() {
-  // If you keep a clock, pass dt. If not, just call gentleRotateAsteroids() with no args after editing it (see step 5).
-  gentleRotateAsteroids(1 / 60);
-};
+    onReady && onReady();
+  };
+
+
+  window.updateBackdrop = function updateBackdrop() {
+    const dt = BACKDROP.clock.getDelta();
+    updateOrbits(dt);
+  };
 
 })();
 
