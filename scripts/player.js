@@ -33,8 +33,21 @@
     const _upVector = new THREE.Vector3(0, 1, 0);  // World up vector (Y-axis)
 
     // =============================================================================
+    
+    // Active visual shards created when player dies (bust into pieces)
+    const activeShards = [];
+    const shardGravity = -0.03;
+    // Helper to remove shard mesh from scene and array
+    function _removeShard(index) {
+        const s = activeShards[index];
+        if (!s) return;
+        try { scene.remove(s.mesh); } catch (e) {}
+        activeShards.splice(index, 1);
+    }
     // TEXTURE MANAGEMENT SYSTEM
     // =============================================================================
+    // Prevent multiple death triggers while a death burst / respawn is in progress
+    let isDying = false;
     
     // Separate texture systems for different body parts
     // This modular approach allows independent material customization
@@ -378,6 +391,45 @@
         }
     }
 
+    // Create a burst of small shards (boxes) at `position` to simulate player busting
+    function playDeathBurst(position, count = 24) {
+        if (!position) position = player ? player.position.clone() : new THREE.Vector3();
+
+        // Choose base material colors from player materials to make shards feel like pieces
+        const baseMats = [];
+        try {
+            baseMats.push(getShirtMaterial());
+            baseMats.push(getPantsMaterial());
+            baseMats.push(getSkinMaterial());
+            baseMats.push(getHairMaterial());
+        } catch (e) {}
+
+        for (let i = 0; i < count; i++) {
+            const size = Math.random() * 0.18 + 0.06;
+            const geom = new THREE.BoxGeometry(size, size, size);
+
+            // pick a color from one of the base materials, fallback to white
+            const src = baseMats[Math.floor(Math.random() * baseMats.length)];
+            const color = (src && src.color) ? src.color.clone() : new THREE.Color(0xffffff);
+
+            const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.6, metalness: 0.05, transparent: true, opacity: 1 });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            mesh.position.copy(position);
+            // small random offset so shards don't all start at same point
+            mesh.position.x += (Math.random() - 0.5) * 0.6;
+            mesh.position.y += (Math.random() - 0.5) * 0.6;
+            mesh.position.z += (Math.random() - 0.5) * 0.6;
+
+            scene.add(mesh);
+
+            const velocity = new THREE.Vector3((Math.random() - 0.5) * 0.9, Math.random() * 1.2 + 0.4, (Math.random() - 0.5) * 0.9);
+            activeShards.push({ mesh, material: mat, velocity, life: 80 + Math.floor(Math.random() * 60) });
+        }
+    }
+
     // =============================================================================
     // HIERARCHICAL CHARACTER MODEL CONSTRUCTION
     // =============================================================================
@@ -610,6 +662,23 @@
     function updatePlayer() {
         if (!player || !gameStarted) return;
 
+        // Update active death shards (simple physics + fade)
+        for (let i = activeShards.length - 1; i >= 0; i--) {
+            const s = activeShards[i];
+            // integrate velocity
+            s.velocity.y += shardGravity;
+            s.mesh.position.x += s.velocity.x;
+            s.mesh.position.y += s.velocity.y;
+            s.mesh.position.z += s.velocity.z;
+            s.life -= 1;
+            // fade out
+            if (s.material && s.material.transparent) {
+                s.material.opacity = Math.max(0, s.material.opacity - 0.02);
+            }
+            if (s.life <= 0 || s.mesh.position.y < -100) {
+                _removeShard(i);
+            }
+        }
         const moveSpeed = 0.1;
         const jumpStrength = 0.4;
         const gravity = -0.02;
@@ -665,20 +734,39 @@
         }
 
         if (_newPosition.y < -50) {
+            // If a death is already being processed, ignore further triggers
+            if (isDying) return;
+
             if (lives > 0) {
+                isDying = true; // mark we're handling a death
                 lives--;
-                
+
                 // Trigger low health warning when only 1 life remains
                 if (lives === 1 && typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
                     StoryManager.trackProgress('lowHealth');
                 }
-                
+
+                // Play death burst visual effect, hide player and delay respawn/game over
+                try {
+                    playDeathBurst(player.position.clone());
+                } catch (e) {}
+                if (player) player.visible = false;
+
                 if (lives <= 0) {
-                    if (typeof global.gameOver === "function") {
-                        global.gameOver();
-                    }
+                    // final death -> call gameOver after short delay so burst can play
+                    setTimeout(() => {
+                        try { isDying = false; } catch (e) {}
+                        if (typeof global.gameOver === "function") {
+                            global.gameOver();
+                        }
+                    }, 900);
                 } else {
-                    respawnPlayer();
+                    // non-final death -> respawn after burst animation
+                    setTimeout(() => {
+                        respawnPlayer();
+                        if (player) player.visible = true;
+                        try { isDying = false; } catch (e) {}
+                    }, 900);
                 }
             }
             return;
@@ -745,6 +833,9 @@
             isJumping = false;
             jumpsRemaining = maxJumps;
             jumpCooldown = 0;
+            // Ensure player is visible again after death burst
+            try { player.visible = true; } catch (e) {}
+            try { isDying = false; } catch (e) {}
             if (player.userData) {
                 if (player.userData.leftArm) player.userData.leftArm.rotation.x = 0;
                 if (player.userData.rightArm) player.userData.rightArm.rotation.x = 0;
