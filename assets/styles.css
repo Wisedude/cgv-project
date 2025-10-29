@@ -1,7 +1,8 @@
 body {
     margin: 0;
     padding: 0;
-    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    /* Use neutral black to avoid blue flash before WebGL is ready */
+    background: #000000;
     overflow: hidden;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -582,7 +583,7 @@ h3 {
 
 /* Mission objective display */
 .objective-display {
-    position: absolute;
+    position: fixed;
     top: 200px;
     left: 20px;
     background: linear-gradient(145deg, rgba(0, 0, 0, 0.85), rgba(0, 40, 80, 0.85));
@@ -642,6 +643,17 @@ h3 {
 
 .notification.visible {
     opacity: 1;
+    transform: translateX(0);
+}
+
+/* Left-anchored variant to avoid minimap area and slide in from left */
+.notification.left {
+    right: auto;
+    left: 30px;
+    transform: translateX(-100%);
+}
+
+.notification.left.visible {
     transform: translateX(0);
 }
 

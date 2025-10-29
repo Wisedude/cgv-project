@@ -36,7 +36,8 @@ let scene, camera, renderer, gameStarted = false;
 let player, playerVelocity = new THREE.Vector3(); // 3D velocity vector for physics simulation
 
 // Game world collections - using arrays for efficient iteration
-let platforms = [], crystals = [], collectibles = []; // Scene object collections
+let platforms = [], crystals = [], collectibles = [];
+let hazards = [], powerups = []; // New scene object collections: hazards hurt player, powerups grant bonuses
 
 // Input and camera control system
 let keys = {}, cameraYaw = 0, cameraPitch = 0; // Spherical coordinate camera system

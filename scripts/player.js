@@ -746,7 +746,7 @@
                     StoryManager.trackProgress('lowHealth');
                 }
 
-                // Play death burst visual effect, hide player and delay respawn/game over
+                // Death burst visual effect, hide player and delay respawn/game over (fall SFX removed)
                 try {
                     playDeathBurst(player.position.clone());
                 } catch (e) {}
@@ -795,6 +795,71 @@
             }
         }
 
+        // Power-up pickups (time/life)
+        if (Array.isArray(powerups)) {
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                const pu = powerups[i];
+                if (!pu) continue;
+                if (player.position.distanceToSquared(pu.position) < 9) {
+                    const kind = (pu.userData && pu.userData.kind) || 'time';
+                    const amount = (pu.userData && pu.userData.amount) || 15;
+                    // Remove from scene
+                    try { scene.remove(pu); } catch (e) {}
+                    powerups.splice(i, 1);
+                    // Apply effect
+                    if (kind === 'life') {
+                        lives = Math.min(5, lives + 1);
+                        if (typeof StoryManager !== 'undefined' && StoryManager.updateObjective) {
+                            StoryManager.showNotification && StoryManager.showNotification('Extra life +1 ❤️', 'success');
+                        }
+                    } else {
+                        gameTime = Math.min(gameTime + amount, 999);
+                        StoryManager && StoryManager.showNotification && StoryManager.showNotification(`Time +${amount}s ⏱️`, 'success');
+                    }
+                    if (typeof EnhancedParticles !== 'undefined' && EnhancedParticles.triggerSparkle) {
+                        try { EnhancedParticles.triggerSparkle(pu.position.clone()); } catch(e){}
+                    }
+                    if (window.audioManager) {
+                        if (typeof window.audioManager.playPowerup === 'function') {
+                            try { window.audioManager.playPowerup(); } catch(e){}
+                        } else if (typeof window.audioManager.playCoin === 'function') {
+                            try { window.audioManager.playCoin(); } catch(e){}
+                        }
+                    }
+                    if (typeof global.updateUI === 'function') updateUI();
+                }
+            }
+        }
+
+        // Hazard collisions
+        if (Array.isArray(hazards) && !isDying) {
+            for (let i = 0; i < hazards.length; i++) {
+                const h = hazards[i];
+                if (!h) continue;
+                const r = (h.userData && h.userData.radius) ? (h.userData.radius + 0.9) : 1.8;
+                if (player.position.distanceToSquared(h.position) < r * r) {
+                    // Trigger the same death/respawn path as falling
+                    // Stop any lingering fall sound to avoid overlap, then play hurt
+                    if (window.audioManager) {
+                        try { if (typeof window.audioManager.stopFall === 'function') window.audioManager.stopFall(); } catch(e){}
+                        try { if (typeof window.audioManager.playHurt === 'function') window.audioManager.playHurt(); } catch(e){}
+                    }
+                    if (lives > 0) {
+                        isDying = true;
+                        lives--;
+                        try { playDeathBurst(player.position.clone()); } catch(e){}
+                        if (player) player.visible = false;
+                        if (lives <= 0) {
+                            setTimeout(() => { try { isDying = false; } catch(e){}; if (typeof global.gameOver === 'function') global.gameOver(); }, 700);
+                        } else {
+                            setTimeout(() => { respawnPlayer(); if (player) player.visible = true; try { isDying = false; } catch(e){}; }, 700);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         if (typeof global.updateCameraPosition === "function") {
             global.updateCameraPosition();
         }
@@ -833,6 +898,15 @@
             isJumping = false;
             jumpsRemaining = maxJumps;
             jumpCooldown = 0;
+            // Teleport SFX on respawn; stop any lingering fall whistle first
+            try {
+                if (window.audioManager && typeof window.audioManager.stopFall === 'function') {
+                    window.audioManager.stopFall();
+                }
+                if (window.audioManager && typeof window.audioManager.playTeleport === 'function') {
+                    window.audioManager.playTeleport();
+                }
+            } catch(e){}
             // Ensure player is visible again after death burst
             try { player.visible = true; } catch (e) {}
             try { isDying = false; } catch (e) {}

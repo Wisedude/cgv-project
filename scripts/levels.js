@@ -54,6 +54,13 @@
                 
                 // Side branch for exploration and crystal hunting
                 { pos: [22, 8, -40], size: [10, 2, 10], color: "#8a7a66" }
+            ],
+            hazards: [
+                { pos: [6, 5, -20], r: 1.2 },
+                { pos: [-8, 10, -50], r: 1.2 }
+            ],
+            powerups: [
+                { pos: [22, 10, -40], kind: 'time', amount: 15 }
             ]
         },
         {
@@ -75,6 +82,15 @@
                 
                 // Final challenge platform at significant height
                 { pos: [8, 26, -98], size: [10, 1.5, 14], color: "#6a594a" }
+            ],
+            hazards: [
+                { pos: [4, 12, -30], r: 1.4 },
+                { pos: [16, 15, -40], r: 1.4 },
+                { pos: [-6, 18, -66], r: 1.4 }
+            ],
+            powerups: [
+                { pos: [-10, 24, -82], kind: 'time', amount: 20 },
+                { pos: [2, 20, -66], kind: 'life', amount: 1 }
             ]
         },
         {
@@ -99,6 +115,17 @@
                 
                 // Ultimate challenge requiring precise platforming
                 { pos: [6, 36, -166], size: [14, 2, 14], color: "#444041" }
+            ],
+            hazards: [
+                { pos: [-6, 5, 10], r: 1.5 },
+                { pos: [9, 6, -12], r: 1.5 },
+                { pos: [5, 11, -42], r: 1.6 },
+                { pos: [-16, 17, -74], r: 1.6 },
+                { pos: [14, 24, -108], r: 1.6 }
+            ],
+            powerups: [
+                { pos: [0, 30, -126], kind: 'time', amount: 20 },
+                { pos: [6, 38, -166], kind: 'life', amount: 1 }
             ]
         }
     ];
@@ -130,7 +157,7 @@
             platforms.length = 0; // Clear array efficiently
         }
         
-        // Crystal cleanup - important for collectible systems
+    // Crystal cleanup - important for collectible systems
         if (scene && crystals) {
             crystals.forEach(crystal => {
                 scene.remove(crystal);
@@ -138,6 +165,18 @@
                 // TODO: Dispose of crystal glow effects and animations
             });
             crystals.length = 0;
+        }
+        
+        // Hazards cleanup
+        if (scene && hazards) {
+            hazards.forEach(h => scene.remove(h));
+            hazards.length = 0;
+        }
+        
+        // Powerups cleanup
+        if (scene && powerups) {
+            powerups.forEach(p => scene.remove(p));
+            powerups.length = 0;
         }
         
         // Particle system cleanup - prevent performance degradation
@@ -199,6 +238,14 @@
             createCrystals(config.crystalCount);
         }
 
+        // Spawn hazards and power-ups per level config
+        if (Array.isArray(config.hazards) && typeof createHazard === 'function') {
+            config.hazards.forEach(h => createHazard(h.pos, h.r));
+        }
+        if (Array.isArray(config.powerups) && typeof createPowerup === 'function') {
+            config.powerups.forEach(p => createPowerup(p.pos, p.kind, p.amount));
+        }
+
         if (typeof createEnvironment === 'function') {
             createEnvironment();
         }
@@ -216,6 +263,10 @@
         // Trigger story manager for level start
         if (typeof StoryManager !== 'undefined' && typeof StoryManager.trackProgress === 'function') {
             StoryManager.trackProgress('levelStart', { level: levelNum });
+            // Heads up on hazards
+            setTimeout(() => {
+                StoryManager.showNotification && StoryManager.showNotification('Beware the spikes! Touching them costs a life.', 'warning');
+            }, 800);
         }
 
         if (typeof hideLoadingScreen === 'function') {

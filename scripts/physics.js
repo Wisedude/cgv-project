@@ -602,6 +602,104 @@
         platforms.push(platform);
     }
 
+    // ============================= HAZARDS AND POWERUPS =============================
+    function createHazard(position, radius = 1.2, type = 'spike') {
+        // Default is a spiky hazard for clearer danger communication
+        let hazard;
+        if (type === 'orb') {
+            // Legacy orb style
+            const geom = new THREE.SphereGeometry(radius, 16, 12);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xff2244,
+                emissive: new THREE.Color(0xff2244),
+                emissiveIntensity: 0.35,
+                metalness: 0.2,
+                roughness: 0.55
+            });
+            hazard = new THREE.Mesh(geom, mat);
+        } else {
+            // Spiky ball: a small core sphere with radial cones pointing outward
+            const group = new THREE.Group();
+            const coreR = Math.max(0.4, radius * 0.55);
+            const coneH = radius * 1.6;
+            const coneR = Math.max(0.15, radius * 0.35);
+
+            const baseColor = 0xaa3322;
+            const coreMat = new THREE.MeshStandardMaterial({
+                color: baseColor,
+                emissive: new THREE.Color(0xff2244),
+                emissiveIntensity: 0.35,
+                metalness: 0.25,
+                roughness: 0.5
+            });
+            const spikeMat = new THREE.MeshStandardMaterial({
+                color: baseColor,
+                emissive: new THREE.Color(0xff2244),
+                emissiveIntensity: 0.35,
+                metalness: 0.3,
+                roughness: 0.45
+            });
+
+            const core = new THREE.Mesh(new THREE.SphereGeometry(coreR, 12, 10), coreMat);
+            core.castShadow = true;
+            group.add(core);
+
+            const axis = new THREE.Vector3(0, 1, 0);
+            const dir = new THREE.Vector3();
+            const quat = new THREE.Quaternion();
+            const spikes = Math.max(14, Math.floor(18 + Math.random() * 10));
+            for (let i = 0; i < spikes; i++) {
+                // Random outward direction
+                dir.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(coneR, coneH, 10), spikeMat);
+                cone.castShadow = true;
+                quat.setFromUnitVectors(axis, dir);
+                cone.quaternion.copy(quat);
+                // Place so that spike tip is outwards from core
+                cone.position.copy(dir).multiplyScalar(coreR + coneH * 0.5);
+                group.add(cone);
+            }
+
+            hazard = group;
+        }
+
+        hazard.position.set(position[0], position[1], position[2]);
+        hazard.castShadow = true;
+        hazard.userData = {
+            type,
+            radius,
+            bobAmplitude: 0.6 + Math.random() * 0.6,
+            bobSpeed: 0.8 + Math.random() * 0.6,
+            baseY: position[1],
+            rotSpeed: 0.01 + Math.random() * 0.02
+        };
+        scene.add(hazard);
+        hazards.push(hazard);
+        return hazard;
+    }
+
+    function createPowerup(position, kind = 'time', amount = 15) {
+        // Visual style: icosahedron with neon color
+        const geom = new THREE.IcosahedronGeometry(0.9, 0);
+        const color = (kind === 'life') ? 0xffcc33 : 0x33e0ff;
+        const mat = new THREE.MeshPhysicalMaterial({
+            color, transparent: true, opacity: 0.95, roughness: 0.25, metalness: 0.1,
+            emissive: new THREE.Color(color).multiplyScalar(0.25), envMapIntensity: 0.8, clearcoat: 0.3
+        });
+        const pu = new THREE.Mesh(geom, mat);
+        pu.position.set(position[0], position[1], position[2]);
+        pu.castShadow = true;
+        pu.userData = {
+            kind, amount,
+            spin: 0.02 + Math.random() * 0.02,
+            bobAmplitude: 0.4 + Math.random() * 0.4,
+            baseY: position[1]
+        };
+        scene.add(pu);
+        powerups.push(pu);
+        return pu;
+    }
+
     // =============================================================================
     // AABB COLLISION DETECTION AND RESPONSE SYSTEM
     // =============================================================================
@@ -766,6 +864,9 @@
         score += 100 * currentLevel;
 
         createParticleEffect(crystal.position, crystal.material.color);
+        if (typeof EnhancedParticles !== 'undefined' && EnhancedParticles.triggerSparkle) {
+            try { EnhancedParticles.triggerSparkle(crystal.position.clone()); } catch(e){}
+        }
         callAudio('playCoin');
 
         // Check if level is complete
@@ -826,7 +927,7 @@
             }
         });
 
-        crystals.forEach(crystal => {
+    crystals.forEach(crystal => {
             crystal.rotation.y += crystal.userData.rotationSpeed;
             crystal.rotation.x += crystal.userData.rotationSpeed * 0.5;
 
@@ -862,9 +963,29 @@
                 if (particle.position.z < -150) particle.position.z = 150;
             }
         }
+
+        // Animate hazards
+        hazards.forEach(h => {
+            const ud = h.userData || {}; const t = elapsedSeconds;
+            h.rotation.y += (ud.rotSpeed || 0.015);
+            if (ud.bobAmplitude) {
+                h.position.y = (ud.baseY || h.position.y) + Math.sin(t * (ud.bobSpeed || 1.0)) * ud.bobAmplitude;
+            }
+        });
+
+        // Animate power-ups
+        powerups.forEach(pu => {
+            const ud = pu.userData || {}; const t = elapsedSeconds;
+            pu.rotation.y += (ud.spin || 0.02);
+            if (ud.bobAmplitude) {
+                pu.position.y = (ud.baseY || pu.position.y) + Math.sin(t * 1.2) * ud.bobAmplitude;
+            }
+        });
     }
 
     global.createPlatform = createPlatform;
+    global.createHazard = createHazard;
+    global.createPowerup = createPowerup;
     global.resolvePlatformCollisions = resolvePlatformCollisions;
     global.createCrystals = createCrystals;
     global.collectCrystal = collectCrystal;
