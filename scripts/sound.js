@@ -28,7 +28,10 @@
         coin: "assets/sound/coin.wav",     // Crystal collection feedback
         jump: "assets/sound/jump.wav",     // Player jump action
         win: "assets/sound/win.wav",       // Level completion celebration
-        lose: "assets/sound/lose.wav"      // Game over notification
+        lose: "assets/sound/lose.wav",     // Game over notification
+        powerup: "assets/sound/videogame-power-up-sound-effect-02.mp3", // Dedicated power-up SFX
+        fall: "assets/sound/falling-whistle-cartoon-180579.mp3",        // Falling off map
+        teleport: "assets/sound/teleport-game-sound-effect-379236.mp3"  // Respawn/teleport
     };
 
     /**
@@ -51,6 +54,9 @@
         jump: 0.6,          // Frequent action, moderate volume
         win: 0.8,           // Celebration, higher impact
         lose: 0.75,         // Important feedback, clear but not harsh
+        powerup: 0.75,      // Distinct but not piercing
+        fall: 0.65,         // Whistle-style falling cue
+        teleport: 0.7,      // Sci-fi teleport chime
         background: 0.25    // Background music, non-intrusive
     };
 
@@ -64,6 +70,7 @@
     let unlocked = false;          // Audio context unlock status for mobile/autoplay restrictions
     let sfxVolumeMultiplier = 1;   // Global sound effects volume multiplier
     let musicVolumeSetting = clampVolume(DEFAULT_VOLUMES.background ?? 0.5); // Background music volume
+    const currentOneShots = {}; // Track currently playing one-shots by key (e.g., 'fall')
 
     // TODO: Add spatial audio support using Web Audio API
     // TODO: Implement audio compression/decompression for large assets
@@ -236,6 +243,62 @@
             // Silently ignore play errors (common with autoplay restrictions)
             // This prevents console spam while maintaining functionality
         });
+    }
+
+    /**
+     * Play a sound and cap its duration by pausing/stopping after capMs.
+     * Optionally provide a key to ensure only a single instance plays at a time.
+     */
+    function playCapped(name, { capMs = 700, key } = {}) {
+        ensureSfxTemplates();
+        const template = soundTemplates[name];
+        if (!template) return;
+
+        // Stop previous instance for this key if any
+        if (key && currentOneShots[key]) {
+            try { currentOneShots[key].pause(); } catch(e) {}
+            try { currentOneShots[key].currentTime = 0; } catch(e) {}
+            currentOneShots[key] = null;
+        }
+
+        const instance = template.cloneNode();
+        const baseVolume = template._baseVolume !== undefined ? template._baseVolume : (template.volume ?? 1);
+        instance.volume = clampVolume(baseVolume * sfxVolumeMultiplier);
+        instance.currentTime = 0;
+
+        // Track instance by key if provided
+        if (key) currentOneShots[key] = instance;
+
+        instance.play().then(() => {
+            // Stop after capped duration
+            setTimeout(() => {
+                try { instance.pause(); } catch(e) {}
+                try { instance.currentTime = 0; } catch(e) {}
+                if (key && currentOneShots[key] === instance) {
+                    currentOneShots[key] = null;
+                }
+            }, Math.max(50, capMs | 0));
+        }).catch(() => {
+            // ignore play errors
+        });
+
+        return instance;
+    }
+
+    /**
+     * Variant sound playback using an existing template but with custom volume/pitch
+     * Useful to differentiate events without adding new assets.
+     */
+    function playVariant(baseName, { volumeMul = 1.0, rate = 1.0 } = {}) {
+        ensureSfxTemplates();
+        const template = soundTemplates[baseName];
+        if (!template) return;
+        const instance = template.cloneNode();
+        const baseVolume = template._baseVolume !== undefined ? template._baseVolume : (template.volume ?? 1);
+        instance.volume = clampVolume(baseVolume * sfxVolumeMultiplier * volumeMul);
+        instance.playbackRate = Math.max(0.5, Math.min(2.0, rate));
+        instance.currentTime = 0;
+        instance.play().catch(() => {});
     }
 
     /**
@@ -414,10 +477,26 @@
         // SOUND EFFECT INTERFACE
         // =============================================================================
         // Each function maps to specific game events for clear audio feedback
-        playCoin: () => playSound("coin"),   // Crystal collection success
-        playJump: () => playSound("jump"),   // Player jump action
-        playWin: () => playSound("win"),     // Level completion celebration
-        playLose: () => playSound("lose"),   // Game over notification
+        playCoin: () => playSound("coin"),        // Crystal collection success
+        playJump: () => playSound("jump"),        // Player jump action
+        playWin: () => playSound("win"),          // Level completion celebration
+        playLose: () => playSound("lose"),        // Game over notification
+        // Dedicated new SFX
+    playPowerup: () => playSound('powerup'),   // Power-up pickup
+    // Falling SFX disabled by design (no-op to avoid breaking callers)
+    playFall: () => {},
+        playTeleport: () => playSound('teleport'), // Respawn/teleport cue
+        // Legacy subtle variants using existing assets (kept for compatibility)
+        playHurt: () => playVariant('lose', { volumeMul: 0.6, rate: 0.9 }),
+        // Utility to stop an in-flight capped sound (e.g., fall)
+        stopFall: () => {
+            const inst = currentOneShots['fall'];
+            if (inst) {
+                try { inst.pause(); } catch(e) {}
+                try { inst.currentTime = 0; } catch(e) {}
+                currentOneShots['fall'] = null;
+            }
+        },
 
         // =============================================================================
         // BACKGROUND MUSIC CONTROL
@@ -454,12 +533,12 @@
             }
         },
 
-        /**
-         * Set sound effects volume with immediate application
-         * Updates global multiplier and all cached templates
-         * Provides instant feedback for volume slider changes
-         */
-        setSfxVolume
+    /**
+     * Set sound effects volume with immediate application
+     * Updates global multiplier and all cached templates
+     * Provides instant feedback for volume slider changes
+     */
+    setSfxVolume,
         
         // TODO: Add spatial audio positioning for 3D sound effects
         // TODO: Implement audio ducking (lower music when SFX plays)
